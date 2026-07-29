@@ -4,6 +4,7 @@ import { computeTax } from "../src/engine/compute.js";
 import { compute80GG, computeHra } from "../src/engine/hra.js";
 import {
   floor100,
+  interest234A,
   interest234B,
   interest234C,
 } from "../src/engine/interest.js";
@@ -20,9 +21,61 @@ const pack = loadRulePack("2025-26");
 describe("rule 119A rounding", () => {
   it("floors interest principal to the lower Rs 100", () => {
     // Verified ITD example: 3,125 -> 3,100
-    expect(floor100(3125)).toBe(3100);
-    expect(floor100(3100)).toBe(3100);
-    expect(floor100(99)).toBe(0);
+    expect(floor100(3125, pack)).toBe(3100);
+    expect(floor100(3100, pack)).toBe(3100);
+    expect(floor100(99, pack)).toBe(0);
+  });
+});
+
+describe("interest234A (golden cases)", () => {
+  it("8,400 outstanding, 5 months late -> 420", () => {
+    const r = interest234A(
+      { taxOnTotalIncomeNetOfPrepaid: 8400, months: 5 },
+      pack,
+    );
+    expect(r.applies).toBe(true);
+    // 8,400 is already a multiple of 100, so 119A(c) does not bite.
+    expect(r.base).toBe(8400);
+    expect(r.interest).toBe(420);
+  });
+
+  it("23,000 outstanding, 1 month late -> 230", () => {
+    const r = interest234A(
+      { taxOnTotalIncomeNetOfPrepaid: 23000, months: 1 },
+      pack,
+    );
+    expect(r.interest).toBe(230);
+  });
+
+  it("nil when the return is on time", () => {
+    const r = interest234A(
+      { taxOnTotalIncomeNetOfPrepaid: 50000, months: 0 },
+      pack,
+    );
+    expect(r.applies).toBe(false);
+    expect(r.interest).toBe(0);
+    expect(r.note).toContain("on or before the due date");
+  });
+
+  it("nil when nothing is outstanding, and says the 234F fee can still apply", () => {
+    // A late return with full TDS coverage carries no 234A -- only s.234F.
+    const r = interest234A(
+      { taxOnTotalIncomeNetOfPrepaid: 0, months: 6 },
+      pack,
+    );
+    expect(r.applies).toBe(false);
+    expect(r.interest).toBe(0);
+    expect(r.note).toContain("234F");
+  });
+
+  it("floors the principal to the lower Rs 100 before charging", () => {
+    // 12,345 -> 12,300 -> x1% x2 = 246, not 246.90.
+    const r = interest234A(
+      { taxOnTotalIncomeNetOfPrepaid: 12345, months: 2 },
+      pack,
+    );
+    expect(r.base).toBe(12300);
+    expect(r.interest).toBe(246);
   });
 });
 
@@ -44,6 +97,59 @@ describe("interest234B (golden cases)", () => {
     );
     expect(r.applies).toBe(false);
     expect(r.interest).toBe(0);
+  });
+
+  it("s.234B(2): a s.140A payment cuts the principal from its own month on", () => {
+    // 1,00,000 shortfall over 6 months is 6,000 flat. Paying 60,000 in month 4
+    // leaves 1,00,000 for months 1-4 (4,000) and 40,000 for months 5-6 (800).
+    const r = interest234B(
+      {
+        assessedTax: 100000,
+        advanceTaxPaid: 0,
+        months: 6,
+        selfAssessmentPayments: [{ monthsFromApril: 4, amount: 60000 }],
+      },
+      pack,
+    );
+    expect(r.segments.map((s) => [s.months, s.base, s.interest])).toEqual([
+      [4, 100000, 4000],
+      [2, 40000, 800],
+    ]);
+    expect(r.interest).toBe(4800);
+    expect(r.note).toContain("s.234B(2)");
+  });
+
+  it("s.234B(2): each segment principal is floored under Rule 119A(c)", () => {
+    // Residue 39,950 floors to 39,900 before the 2-month charge -> 798.
+    const r = interest234B(
+      {
+        assessedTax: 100000,
+        advanceTaxPaid: 0,
+        months: 6,
+        selfAssessmentPayments: [{ monthsFromApril: 4, amount: 60050 }],
+      },
+      pack,
+    );
+    expect(r.segments[1]?.base).toBe(39900);
+    expect(r.interest).toBe(4798);
+  });
+
+  it("s.234B(2): payments arrive unordered and are applied chronologically", () => {
+    const r = interest234B(
+      {
+        assessedTax: 100000,
+        advanceTaxPaid: 0,
+        months: 6,
+        selfAssessmentPayments: [
+          { monthsFromApril: 5, amount: 20000 },
+          { monthsFromApril: 3, amount: 50000 },
+        ],
+      },
+      pack,
+    );
+    // months 1-3 on 1,00,000 (3,000); 4-5 on 50,000 (1,000); 6 on 30,000 (300)
+    expect(r.segments.map((s) => s.months)).toEqual([3, 2, 1]);
+    expect(r.interest).toBe(4300);
   });
 });
 
@@ -221,12 +327,80 @@ describe("computeHra (golden cases)", () => {
   });
 
   it("80GG limbs: cap / 25% / rent-excess", () => {
-    // cap limb: high income, high rent -> 60,000
-    expect(compute80GG(200000, 1000000, pack).deduction).toBe(60000);
+    // cap limb: high income, high rent -> 5,000 x 12 = 60,000
+    expect(
+      compute80GG({ rentPaid: 200000, adjustedTotalIncome: 1000000 }, pack)
+        .deduction,
+    ).toBe(60000);
     // 25% limb: ATI 2,00,000 -> 50,000 when rent allows
-    expect(compute80GG(200000, 200000, pack).deduction).toBe(50000);
+    expect(
+      compute80GG({ rentPaid: 200000, adjustedTotalIncome: 200000 }, pack)
+        .deduction,
+    ).toBe(50000);
     // rent limb: rent 60,000, ATI 1,80,000 -> 60,000-18,000 = 42,000
-    expect(compute80GG(60000, 180000, pack).deduction).toBe(42000);
+    expect(
+      compute80GG({ rentPaid: 60000, adjustedTotalIncome: 180000 }, pack)
+        .deduction,
+    ).toBe(42000);
+  });
+
+  it("80GG cap limb is Rs 5,000 PER MONTH, so a part year caps lower", () => {
+    // 7 months of tenancy: cap limb 5,000 x 7 = 35,000, not the annual 60,000.
+    const r = compute80GG(
+      { rentPaid: 200000, adjustedTotalIncome: 1000000, months: 7 },
+      pack,
+    );
+    expect(r.limbs.cap).toBe(35000);
+    expect(r.deduction).toBe(35000);
+  });
+
+  it("80GG is barred under the new regime and when any HRA was received", () => {
+    const newRegime = compute80GG(
+      { rentPaid: 200000, adjustedTotalIncome: 1000000 },
+      pack,
+      "new",
+    );
+    expect(newRegime.eligible).toBe(false);
+    expect(newRegime.deduction).toBe(0);
+
+    const withHra = compute80GG(
+      {
+        rentPaid: 200000,
+        adjustedTotalIncome: 1000000,
+        hraReceivedAnyMonth: true,
+      },
+      pack,
+    );
+    expect(withHra.eligible).toBe(false);
+    expect(withHra.deduction).toBe(0);
+    expect(withHra.warnings.some((w) => w.includes("mutually exclusive"))).toBe(
+      true,
+    );
+  });
+
+  it("80GG never returns a negative deduction when rent is below 10% of ATI", () => {
+    const r = compute80GG(
+      { rentPaid: 10000, adjustedTotalIncome: 1000000 },
+      pack,
+    );
+    expect(r.limbs.rentExcess).toBe(0);
+    expect(r.deduction).toBe(0);
+  });
+
+  it("warns when the periods do not cover all 12 months", () => {
+    const r = computeHra(
+      [
+        {
+          months: 9,
+          basic: 450000,
+          hraReceived: 90000,
+          rentPaid: 108000,
+          isMetro: true,
+        },
+      ],
+      pack,
+    );
+    expect(r.warnings.some((w) => w.includes("9 months"))).toBe(true);
   });
 });
 
@@ -251,14 +425,17 @@ describe("old-regime 87A fix", () => {
   });
 
   it("87A can offset 111A STCG tax under the old regime", () => {
-    // 2L normal (slab tax 0 after nil band... actually 0 since below 2.5L) + 3L STCG under 5L total? No: 2L + 2.5L = 4.5L total
     const r = computeTax(
       { ...base, otherIncome: 200000, stcg111A: 250000 },
       pack,
     );
-    // total 4.5L <= 5L -> rebate applies; slab tax 0, STCG tax 50,000 -> rebate min(50,000, 12,500) = 12,500 off STCG
+    // s.111A proviso: normal income 2L leaves 50,000 of the 2.5L basic
+    // exemption unexhausted, which reduces the gains to 2,00,000 -> tax 40,000.
+    expect(r.basicExemptionSetOff).toBe(50000);
+    expect(r.taxableStcg111A).toBe(200000);
+    // total 4.5L <= 5L -> rebate applies: min(40,000, 12,500) = 12,500 off STCG
     expect(r.rebate87A).toBe(12500);
-    expect(r.stcgTax).toBe(37500);
+    expect(r.stcgTax).toBe(27500);
   });
 
   it("87A never offsets 112A LTCG tax", () => {
@@ -266,8 +443,10 @@ describe("old-regime 87A fix", () => {
       { ...base, otherIncome: 200000, ltcg112A: 250000 },
       pack,
     );
-    // total 4.5L <= 5L; slab tax 0; LTCG tax (2.5L-1.25L)*12.5% = 15,625 stays
-    expect(r.ltcgTax).toBe(15625);
+    // (2.5L - 1.25L exemption) = 1.25L, less the 50,000 unexhausted basic
+    // exemption (s.112A(2) proviso) = 75,000 -> tax 9,375, and 87A cannot touch it.
+    expect(r.taxableLtcg112A).toBe(75000);
+    expect(r.ltcgTax).toBe(9375);
     expect(r.rebate87A).toBe(0);
   });
 });
@@ -338,6 +517,66 @@ describe("AIS decrypt (synthetic round-trip)", () => {
     expect(() =>
       decryptAis(blob, { pan: "ABCDE1234F", dob: "02021992" }),
     ).toThrow(AisDecryptError);
+  });
+
+  it("a wrong DOB never reports the format as changed", () => {
+    // AES-CBC accepts a wrong key whenever the trailing bytes form valid PKCS#7
+    // padding, so a plain DOB typo used to surface as "the AIS export format has
+    // changed -- file an issue". Sweep enough wrong DOBs to hit that branch: the
+    // survivor rate is ~1/256 per attempt, so 400 keys make a miss vanishingly
+    // unlikely. Every failure must name the DOB, never the format.
+    const blob = encryptAis(doc, "abcde1234f" + "GQ39%*g" + "01011990");
+    for (let d = 0; d < 400; d++) {
+      const dob = `${String((d % 28) + 1).padStart(2, "0")}${String((d % 12) + 1).padStart(2, "0")}${1950 + d}`;
+      if (dob === "01011990") continue;
+      let message = "";
+      try {
+        decryptAis(blob, { pan: "ABCDE1234F", dob });
+        throw new Error(`wrong DOB ${dob} decrypted successfully`);
+      } catch (err) {
+        expect(err).toBeInstanceOf(AisDecryptError);
+        message = (err as Error).message;
+      }
+      expect(message).not.toContain("format has changed");
+      expect(message).toContain("DOB");
+    }
+  });
+
+  it("parseAisDocument ignores labels past the end of a row", () => {
+    // A hostile file can declare far more labels than any row has cells. The
+    // parser must cost O(row), not O(labels): iterating the label list per row
+    // made a 3.5 MB file block the single-threaded server for ~97s.
+    const wide = {
+      partB: {
+        sections: [
+          {
+            title: "SFT",
+            elements: [
+              {
+                title: "Securities",
+                l1: {
+                  columnLabel: Array.from(
+                    { length: 200_000 },
+                    (_, i) => `c${i}`,
+                  ),
+                  columnData: Array.from({ length: 20_000 }, () => ["1000"]),
+                },
+              },
+            ],
+          },
+        ],
+      },
+    };
+    const started = Number(process.hrtime.bigint());
+    const parsed = parseAisDocument(wide);
+    const elapsedMs = (Number(process.hrtime.bigint()) - started) / 1e6;
+    expect(parsed.rows.length).toBe(20_000);
+    // Only the first cell carries data, so each row keeps exactly one field.
+    expect(Object.keys(parsed.rows[0]?.fields ?? {})).toEqual(["c0"]);
+    // Measured on this shape: 8519ms iterating labels per row, 10ms iterating
+    // the row. The threshold sits ~100x above the fixed cost and ~8x below the
+    // quadratic one, so it discriminates without being flaky on a slow runner.
+    expect(elapsedMs).toBeLessThan(1000);
   });
 
   it("parseAisDocument normalizes rows with label-matched fields", () => {
@@ -416,5 +655,146 @@ describe("reconcile", () => {
     expect(r.findings).toEqual([]);
     expect(r.checksSkipped.length).toBeGreaterThan(0);
     expect(r.checksSkipped.every((s) => s.reason.length > 0)).toBe(true);
+  });
+
+  it("M4: declared salary below the Form 16 total", () => {
+    const r = reconcile(
+      {
+        form16: [
+          { tan: "AAAA11111A", grossSalary: 1200000, tdsDeposited: 90000 },
+          { tan: "BBBB22222B", grossSalary: 600000, tdsDeposited: 30000 },
+        ],
+        return: { salaryDeclared: 1200000 },
+      },
+      pack,
+    );
+    const m4 = r.findings.find((f) => f.id === "M4");
+    expect(m4?.severity).toBe("high");
+    expect(m4?.figures?.delta).toBe(600000);
+    expect(m4?.noticePreempted).toBe("143(1)(a)(vi)");
+  });
+
+  it("M1: a Form 16 TAN entirely absent from 26AS is HIGH, not skipped", () => {
+    const r = reconcile(
+      {
+        form26asTds: [
+          {
+            tan: "AAAA11111A",
+            section: "192",
+            amountPaid: 1200000,
+            tdsDeposited: 90000,
+          },
+        ],
+        form16: [
+          { tan: "AAAA11111A", tdsDeposited: 90000 },
+          { tan: "CCCC33333C", tdsDeposited: 25000 },
+        ],
+      },
+      pack,
+    );
+    const m1 = r.findings.filter((f) => f.id === "M1");
+    expect(m1.length).toBe(1);
+    expect(m1[0]?.severity).toBe("high");
+    expect(m1[0]?.title).toContain("CCCC33333C");
+    expect(m1[0]?.figures?.delta).toBe(25000);
+  });
+
+  it("M5: 26AS rows with TDS but no gross amount", () => {
+    const r = reconcile(
+      {
+        form26asTds: [
+          {
+            tan: "AAAA11111A",
+            section: "194A",
+            amountPaid: 0,
+            tdsDeposited: 500,
+          },
+        ],
+      },
+      pack,
+    );
+    const m5 = r.findings.find((f) => f.id === "M5");
+    expect(m5?.noticePreempted).toBe("139(9) defect");
+  });
+
+  it("groups 26AS TDS by income head, unmapped sections included", () => {
+    const r = reconcile(
+      {
+        form26asTds: [
+          {
+            tan: "AAAA11111A",
+            section: "192",
+            amountPaid: 1200000,
+            tdsDeposited: 90000,
+          },
+          {
+            tan: "BBBB22222B",
+            section: "194A",
+            amountPaid: 50000,
+            tdsDeposited: 5000,
+          },
+          {
+            tan: "CCCC33333C",
+            section: "194Z",
+            amountPaid: 10000,
+            tdsDeposited: 1000,
+          },
+        ],
+      },
+      pack,
+    );
+    // Sorted by amount, so salary leads.
+    expect(r.tdsByHead[0]).toEqual({
+      head: "salary",
+      sections: ["192"],
+      tdsDeposited: 90000,
+    });
+    const unmapped = r.tdsByHead.find((h) => h.head === "unmapped");
+    expect(unmapped?.sections).toEqual(["194Z"]);
+    expect(unmapped?.tdsDeposited).toBe(1000);
+  });
+
+  it("sums TDS in paise so long lists do not drift", () => {
+    // 3 x 33.33 sums to 99.99000000000001 with plain float addition.
+    const r = reconcile(
+      {
+        form26asTds: [33.33, 33.33, 33.33].map((tdsDeposited, i) => ({
+          tan: `AAAA1111${i}A`,
+          section: "194A",
+          amountPaid: 1000,
+          tdsDeposited,
+        })),
+        return: { tdsClaimed: 99.99 },
+      },
+      pack,
+    );
+    expect(r.tdsByHead[0]?.tdsDeposited).toBe(99.99);
+    // Claim equals the deposited total exactly, so no H1 over-claim finding.
+    expect(r.findings.find((f) => f.id === "H1")).toBeUndefined();
+  });
+});
+
+describe("rule pack validation", () => {
+  it("rejects an FY outside the available-years allow-list", () => {
+    expect(() => loadRulePack("../package")).toThrow(/no rule pack/);
+    expect(() => loadRulePack("2024-25")).toThrow(/Available: 2025-26/);
+  });
+
+  it("exposes every section the engine reads", () => {
+    // If a future pack drops one of these, validatePack throws at load time
+    // instead of a TypeError surfacing mid tool call.
+    for (const key of [
+      "interest",
+      "hra",
+      "deduction80GG",
+      "reconcile",
+      "tdsSectionToHead",
+      "itrEligibility",
+      "rounding",
+    ] as const) {
+      expect(pack[key]).toBeDefined();
+    }
+    expect(pack.oldRegime.slabsSenior.length).toBeGreaterThan(0);
+    expect(pack.oldRegime.slabsSuperSenior.length).toBeGreaterThan(0);
   });
 });

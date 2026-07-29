@@ -3,6 +3,57 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- **Senior / super-senior basic exemption is a slab set, not an income deduction.** The old regime previously subtracted Rs 3,00,000 (senior) or Rs 5,00,000 (super senior) from taxable income before applying the below-60 slabs, which under-taxed every senior return by a whole slab and mis-stated total income on the face of the computation. The engine now selects `oldRegime.slabsSenior` / `slabsSuperSenior` from the rule pack, so income is reported unchanged and only the nil band widens. Source: Finance Act 2025 First Schedule Part I Paragraph A sub-paragraphs (ii) and (iii)
+- **Surcharge marginal relief now compares tax AND surcharge at the threshold.** Relief was computed against surcharge alone, leaving the full amount standing just past a band edge. The engine now recomputes tax plus surcharge on a notional income rolled back to the threshold and caps the surcharge so the combined figure never exceeds that plus the income above the threshold. Source: proviso to First Schedule Part I Paragraph A
+- **Unexhausted basic exemption is set off against listed-equity gains.** Where normal income falls short of the basic exemption, the shortfall now reduces 111A STCG first and then post-threshold 112A LTCG (the higher-taxed head first, which the statute permits the assessee to choose). Source: proviso to s.111A(1) and proviso to s.112A(2)
+- **25% and 37% surcharge bands ignore 111A/112/112A/dividend income.** A taxpayer past Rs 2 crore purely on capital gains now correctly stays in the 15% band via the residual clause instead of being pushed to 25%/37%. Source: Finance Act 2025 First Schedule Part I Paragraph A
+- **s.288A/288B rounding applied.** Total income is rounded to the nearest multiple of ten before the slabs are applied, and the tax payable is rounded to the nearest ten. Source: Income-tax Act s.288A and s.288B
+- Section 234C was silently omitted from `compute_interest_234` whenever its own inputs were absent; each section is now computed only when its inputs exist and anything skipped is reported in a `skipped[]` array with a reason
+- Form 26AS amount extraction read the last three NUMERIC cells, so a blank cell shifted the window and silently mis-assigned amount paid / TDS deducted / TDS deposited. Amounts are now read positionally from the cells following the section code, correction rows are flagged (`isCorrection`), part headers reset the current deductor, and unparsed rows are surfaced in `unparsedRows`
+- `compute_hra` ignored the `months` field on each period, so a part-year tenancy was treated as a full year. Periods that do not total 12 months now raise a warning, and 80GG applies its Rs 5,000 **per month** limb rather than a flat annual Rs 60,000
+- 80GG was offered under the new regime and alongside HRA, both of which s.80GG bars, and a rent below 10% of adjusted total income returned a bare zero with nothing saying why. It now reports an `eligible: false` flag with an explanatory warning in each of those cases. (The deduction itself was never negative: the rent-excess limb was already clamped at zero, and the tool boundary rejects a negative adjusted total income)
+- Reconcile summed rupee floats, so long TDS lists drifted by paise; totals now sum integer paise. A TAN present in Form 16 but entirely absent from 26AS is now a HIGH finding instead of being skipped
+- Interest under s.234B now honours the s.234B(2) payment ladder: each self-assessment payment under s.140A reduces the principal from its own month, reported as per-segment output
+- Rule-pack loading rejects any FY not in the available-years allow-list, so a caller-supplied year cannot be used to probe the filesystem
+- AIS decryption failures now distinguish a rotated export format from a wrong password, and name the fix in each case. AES-CBC accepts a wrong key whenever the trailing bytes happen to form valid PKCS#7 padding (~1 in 256 per candidate), so a one-character DOB typo used to surface as "the export format has changed -- file an issue". Only a payload that actually starts like JSON now counts as evidence of a format change
+- Every rupee input is capped at Rs 1 lakh crore. A caller-supplied `1e308` previously passed validation, overflowed the income sum to `Infinity`, and `JSON.stringify` serialized that as `null` -- so the tool reported success with every tax figure null
+- Document paths are stat-checked before reading: a directory and an oversized file each get their own message instead of the generic "could not read file", and a multi-gigabyte file no longer surfaces as a bare V8 "Invalid string length"
+- The `parse_ais` PAN mask is case-insensitive. The parser preserves whatever case the source file carries, so a lowercase PAN in a remark or deductor name passed through the text mirror unmasked
+- Two quadratic paths that a mis-scaled tool call could reach: the AIS column reader iterated the label list per row (a crafted 3.5 MB file blocked the single-threaded stdio server for ~97s; now ~10ms), and reconcile check M1 re-filtered the whole 26AS list per Form 16 entry (now indexed by TAN once). `reconcile_documents` also bounds its arrays at 2,000 TDS rows and 50 Form 16s
+
+### Added
+
+- Section 234A (interest for late filing) via `compute_interest_234`, from the rule pack's `interest.s234A` config
+- Reconcile checks M4 (declared salary below the summed Form 16 gross salary, s.143(1)(a)(vi)) and M5 (26AS rows with TDS deposited but no amount paid, s.139(9) defect)
+- `tsconfig.test.json` plus a two-config `pnpm typecheck`: the test suite was previously excluded from typechecking, so a stale call signature only surfaced at runtime
+- Engine tests pinning surcharge bands, marginal relief on both sides of a band edge, the enhanced-band exclusion, the 15% gains cap, the 25% new-regime cap, all three old-regime age bands, and s.288A/288B rounding. Added a mutation test that fails if `allowAgainst111A` is ever flipped on for the new regime, so the "87A never offsets 111A/112A under the new regime" claim is enforced rather than merely documented
+- `.gitattributes` normalizing every text file to LF. With `core.autocrlf=true` a clean clone checked out CRLF and `pnpm lint` failed on unmodified files
+- CI now runs a matrix (Ubuntu + Windows, Node 22 + 24 + 26), asserts real computed tax figures over stdio instead of grepping the tool list, asserts that nothing but JSON-RPC reaches stdout, and validates the npm tarball by installing it and running it as a user would
+- `publish.yml` verifies the release candidate tarball, publishes with `--provenance`, and fails if the registry does not report attestations afterwards. v0.3.0 was hand-published and carries none
+- `fixtures/` is gitignored with a README explaining why: it is where real Form 26AS and AIS documents land during local parser checks, and those carry PAN, salary and TDS data
+- Server tests now call all twelve tools through an in-memory MCP client, including the PAN contract on both parsers (masked in the text mirror, real in `structuredContent`), the rupee ceiling, the directory/oversize read branches, and the AIS decrypt round trip
+- `src/**/*.js` and `src/**/*.d.ts` are gitignored: `tsc -p tsconfig.test.json` widens `rootDir` to the repo root and emits next to the sources, after which `pnpm lint` fails on 22 generated files
+- Tests for s.234A (both published goldens, the nil-when-on-time and nil-when-nothing-outstanding branches, and the Rule 119A(c) principal floor) and for the s.234B(2) payment ladder (segment split, per-segment flooring, unordered payments)
+
+### Changed
+
+- Rule pack 1.2.0: `oldRegime.slabsSenior` / `slabsSuperSenior`, `capitalGains.basicExemptionSetOff`, `surcharge.enhancedBandsExcludeSpecialRateIncome` + `enhancedBandRateFloor`, `itrEligibility` caps (previously hardcoded in `itr-form.ts`), `interest.s234A`, `deduction80GG.capPerMonth`, and explicit `thresholdBasis` / `allowAgainst111A` / `allowAgainst112A` on both regimes' `rebate87A`
+- `compute80GG` takes an options object and a regime argument instead of positional numbers (breaking for direct importers; the MCP tool surface is unchanged)
+- `TaxBreakdown` gained `basicExemptionSetOff` and `surchargeRatePct`
+- `reconcile_documents` reports `tdsByHead`, grouping 26AS TDS by the income head each section implies. The rule pack's `tdsSectionToHead` map had shipped in v0.2 with nothing reading it; sections outside the map surface as `unmapped` rather than being dropped
+- Rule-pack config sections (`interest`, `hra`, `deduction80GG`, `reconcile`, `tdsSectionToHead`) are now required rather than optional, and `validatePack()` names the missing section at load time. The optional typing had forced `?? <literal>` fallbacks at every read site, which meant a pack missing a rate silently computed with a hardcoded one
+- `docs/v0.2-spec.md` marked up with per-section implementation status. It was written before v0.2 was coded and read as shipped behaviour, while Form 16 PDF parsing, the CSV fallback, the SFT code lookup, four reconcile checks and the whitelist engine were never built
+- `recommend_itr_form`'s `totalIncome` now means total income AFTER Chapter VI-A deductions, reversing the previous "gross total income before Chapter VI-A" wording. The Rs 50 lakh ITR-1/ITR-4 ceiling tests total income, so the old description told callers to supply the one figure that would wrongly rule out ITR-1 for anyone whose gross crossed 50L but whose total did not
+- `recommend_itr_form` treats `presumptive` as a business side even when `hasBusinessIncome` is false. 44AD/44ADA receipts ARE business income, and without this a presumptive-only filer skipped the business-form branch entirely
+- README documents the open AIS ship gate: the reverse-engineered password scheme has never been verified against a live portal export
+- `biome.json` migrated to the 2.5.x schema (`biome migrate`); dependencies moved to their latest stable releases (MCP SDK 1.30.0, TypeScript 7.0.2, Biome 2.5.6, Vitest 4.1.10, @types/node 26.1.2) and CI to `pnpm/action-setup@v6` + `actions/setup-node@v7`
+- `pnpm-workspace.yaml` pins `postcss >=8.5.18` and `esbuild >=0.28.1` via overrides. Both are dev-only (neither ships in the package `files`), but the transitive resolutions carried GHSA-r28c-9q8g-f849 and GHSA-g7r4-m6w7-qqqr; `pnpm audit` is now clean
+- Test suite grown to 109 tests
+
 ## [0.3.0] - 2026-07-21
 
 ### Changed
@@ -19,6 +70,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 ### Fixed
 
 - Stale test title ("lists all six tools") corrected to the actual twelve-tool surface
+
+## [0.2.0] - 2026-07-07
 
 ### Added
 

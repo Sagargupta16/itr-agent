@@ -9,6 +9,8 @@ export interface TdsEntry {
   amountPaid: number;
   taxDeducted: number;
   tdsDeposited: number;
+  /** True for correction/cancellation rows, which carry negative figures. */
+  isCorrection: boolean;
 }
 
 export interface Form26AS {
@@ -21,17 +23,65 @@ export interface Form26AS {
   warnings: string[];
 }
 
+/** Longest plausible rupee cell ("-1,23,45,67,890.12" is 18). The bound keeps
+ * the numeric test linear on pathological input instead of letting a long
+ * comma-and-digit run drive quadratic backtracking. */
+const MAX_NUMERIC_FIELD = 24;
+
+/** Amounts may be negative (correction rows) either with a leading minus or in
+ * accounting parentheses. Commas are Indian-grouped. */
+const NUMERIC_RE = /^-?\(?[\d,]*\d(\.\d{1,3})?\)?$/;
+
+function isNumericField(field: string): boolean {
+  if (!field || field.length > MAX_NUMERIC_FIELD) return false;
+  return NUMERIC_RE.test(field);
+}
+
 function num(field: string | undefined): number {
   if (!field) return 0;
-  const cleaned = field.replace(/[,\s]/g, "");
+  const parenthesised = /^\(.*\)$/.test(field.trim());
+  const cleaned = field.replace(/[,\s()]/g, "");
   const n = Number.parseFloat(cleaned);
-  return Number.isFinite(n) ? n : 0;
+  if (!Number.isFinite(n)) return 0;
+  return parenthesised && n > 0 ? -n : n;
 }
 
 const TAN_RE = /^[A-Z]{4}\d{5}[A-Z]$/;
 const PAN_RE = /\b([A-Z]{5}\d{4}[A-Z])\b/;
 const AY_RE = /Assessment Year[:^\s]*(\d{4}-\d{2})/i;
-const SECTION_RE = /^\d{3}[A-Z]{0,3}$/;
+
+/** Section codes as TRACES emits them: a 3-digit base (192/193/194/195/196/197
+ * for TDS, 206 for TCS) with optional letters and an optional sub-clause
+ * ("194I(a)"), or the abbreviated form TRACES uses in some exports ("94C",
+ * "4IA", "6CE") which always carries at least one letter. */
+const SECTION_RE = /^(?:\d{3}[A-Z]{0,3}(?:\([ab]\))?|\d{1,2}[A-Z]{1,3})$/;
+/** A purely numeric field is only a section if it is one of these. Without this
+ * a 3-digit serial number ("100") in column 1 would be read as the section. */
+const NUMERIC_SECTIONS = new Set([
+  "192",
+  "193",
+  "194",
+  "195",
+  "196",
+  "197",
+  "206",
+]);
+
+function isSectionField(field: string): boolean {
+  if (!SECTION_RE.test(field)) return false;
+  if (/^\d+$/.test(field)) return NUMERIC_SECTIONS.has(field);
+  return true;
+}
+
+/** 26AS is split into PART-I (TDS), PART-II (TCS), PART-III onwards (SFT, AIR,
+ * refunds, ...). A deductor context must not survive a part change. */
+const PART_HEADER_RE = /\bPART[\s^-]*(?:[IVX]+|[A-H])\b/i;
+
+/** Sum rupee amounts through paise integers: float addition over dozens of
+ * two-decimal figures otherwise drifts and breaks exact 26AS comparisons. */
+function sumRupees(values: number[]): number {
+  return values.reduce((s, v) => s + Math.round(v * 100), 0) / 100;
+}
 
 /** Parse the caret-delimited 26AS text. Tolerant: unknown lines are skipped,
  * structural surprises land in warnings[] instead of throwing. */
@@ -46,19 +96,36 @@ export function parseForm26AS(text: string): Form26AS {
 
   const tdsEntries: TdsEntry[] = [];
   let currentDeductor: { name: string; tan: string } | null = null;
+  let unparsedRows = 0;
 
   for (const line of lines) {
+    // Part boundaries reset the deductor: PART-II TCS rows carry a collector,
+    // not the last PART-I deductor, and attributing them to it invents credit.
+    if (PART_HEADER_RE.test(line)) {
+      currentDeductor = null;
+      continue;
+    }
     if (!line.includes("^")) continue;
     const fields = line.split("^").map((f) => f.trim());
 
     // Deductor header rows carry a TAN; transaction rows carry a section code.
     const tanIdx = fields.findIndex((f) => TAN_RE.test(f));
-    const sectionIdx = fields.findIndex((f) => SECTION_RE.test(f));
+    const sectionIdx = fields.findIndex((f) => isSectionField(f));
 
     if (tanIdx !== -1) {
-      const name = fields.find(
-        (f, i) => i !== tanIdx && f.length > 3 && !/^\d/.test(f),
-      );
+      // The name is the longest non-numeric, non-code cell: deductor names are
+      // the only free text on the row, and picking the longest beats the first
+      // (which can be a status word like "F" or a booking flag).
+      const name = fields
+        .filter(
+          (f, i) =>
+            i !== tanIdx &&
+            f.length > 3 &&
+            !isNumericField(f) &&
+            !isSectionField(f) &&
+            /[A-Za-z]/.test(f),
+        )
+        .sort((a, b) => b.length - a.length)[0];
       currentDeductor = {
         name: name ?? "(unknown)",
         tan: fields[tanIdx] ?? "",
@@ -69,22 +136,49 @@ export function parseForm26AS(text: string): Form26AS {
     }
 
     if (sectionIdx !== -1 && currentDeductor) {
-      // Transaction row layout: ... section ... amounts are the trailing
-      // numeric fields (amount paid, tax deducted, TDS deposited).
-      const numerics = fields
-        .filter((f) => /^[\d,]+\.?\d*$/.test(f))
-        .map((f) => num(f));
-      if (numerics.length >= 3) {
+      // Transaction row layout ends with amount paid, tax deducted, TDS
+      // deposited. Read them POSITIONALLY (last three cells) rather than by
+      // filtering for numerics: a blank cell would otherwise shift the window
+      // and silently report the tax deducted as the amount paid.
+      const cells = fields.slice(sectionIdx + 1);
+      while (cells.length > 0 && cells[cells.length - 1] === "") cells.pop();
+      const tail = cells.slice(-3);
+      if (tail.length === 3 && tail.some((f) => isNumericField(f))) {
+        const [amountPaid, taxDeducted, tdsDeposited] = tail.map((f) =>
+          isNumericField(f) ? num(f) : 0,
+        );
+        const nonNumeric = tail.filter((f) => f !== "" && !isNumericField(f));
+        if (nonNumeric.length > 0) {
+          warnings.push(
+            `non-numeric value in an amount column for TAN ${currentDeductor.tan} (read as 0): ${nonNumeric.join(", ")}`,
+          );
+        }
         tdsEntries.push({
           deductorName: currentDeductor.name,
           tan: currentDeductor.tan,
           section: fields[sectionIdx] ?? "",
-          amountPaid: numerics[numerics.length - 3] ?? 0,
-          taxDeducted: numerics[numerics.length - 2] ?? 0,
-          tdsDeposited: numerics[numerics.length - 1] ?? 0,
+          amountPaid: amountPaid ?? 0,
+          taxDeducted: taxDeducted ?? 0,
+          tdsDeposited: tdsDeposited ?? 0,
+          isCorrection: (tdsDeposited ?? 0) < 0 || (amountPaid ?? 0) < 0,
         });
+      } else {
+        unparsedRows += 1;
       }
     }
+  }
+
+  if (unparsedRows > 0) {
+    warnings.push(
+      `${unparsedRows} row(s) looked like transactions but had no readable amount columns -- compare the totals below against the 26AS footer`,
+    );
+  }
+
+  const corrections = tdsEntries.filter((e) => e.isCorrection).length;
+  if (corrections > 0) {
+    warnings.push(
+      `${corrections} correction/cancellation row(s) with negative amounts were included in the totals -- this is how TRACES reports a reversal, so the net figure is the creditable one`,
+    );
   }
 
   if (tdsEntries.length === 0) {
@@ -97,12 +191,8 @@ export function parseForm26AS(text: string): Form26AS {
     pan,
     assessmentYear,
     tdsEntries,
-    totalTdsDeposited: Math.round(
-      tdsEntries.reduce((s, e) => s + e.tdsDeposited, 0),
-    ),
-    totalAmountPaid: Math.round(
-      tdsEntries.reduce((s, e) => s + e.amountPaid, 0),
-    ),
+    totalTdsDeposited: sumRupees(tdsEntries.map((e) => e.tdsDeposited)),
+    totalAmountPaid: sumRupees(tdsEntries.map((e) => e.amountPaid)),
     warnings,
   };
 }

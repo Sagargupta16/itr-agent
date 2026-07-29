@@ -1,0 +1,18 @@
+# Normalize every text file to LF in the repo AND in the working tree.
+# Without eol=lf, a contributor with core.autocrlf=true checks out CRLF, biome
+# (which formats to LF) then reports every file as unformatted, and `pnpm lint`
+# fails on a clean clone.
+* text=auto eol=lf
+
+# The shebang in dist/index.js must not gain a CR, and lockfiles/snapshots stay
+# byte-stable for diffing.
+*.ts text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+pnpm-lock.yaml text eol=lf linguist-generated=true
+
+# Fixtures are parser inputs. Keep the bytes exactly as downloaded from
+# TRACES/AIS -- a line-ending rewrite would change what the parser tests see.
+fixtures/** -text

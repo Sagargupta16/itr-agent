@@ -5,7 +5,11 @@ export interface AdvanceTaxInput {
   estimatedTax: number;
   /** TDS/TCS expected to be deducted during the year. */
   tdsExpected: number;
-  /** Advance tax already paid, keyed by installment index (0-3). */
+  /** Advance tax already paid, PER installment (index 0-3), NOT cumulative:
+   * [15000, 10000] means Rs 15,000 by Jun 15 and a further Rs 10,000 by Sep 15,
+   * i.e. Rs 25,000 cumulative. Note the deliberate contrast with
+   * `interest234C`, whose `cumulativePaid` is running totals -- 234C is defined
+   * statutorily on cumulative percentages, this plan on what to pay next. */
   paidSoFar?: number[];
 }
 
@@ -14,6 +18,7 @@ export interface Installment {
   cumulativePct: number;
   cumulativeDue: number;
   installmentAmount: number;
+  /** Running total of `paidSoFar` up to and including this installment. */
   paidCumulative: number;
   shortfall: number;
 }

@@ -50,9 +50,20 @@ export function decryptAis(
     );
   }
 
+  if (!/^[0-9a-fA-F]{64}/.test(k)) {
+    throw new AisDecryptError(
+      "the file does not start with a 64-character hex IV + salt header. This is not the encrypted AIS JSON: download it from the portal via AIS > Download > JSON (not the PDF or the CSV).",
+    );
+  }
+
   const iv = Buffer.from(k.slice(0, 32), "hex");
   const salt = Buffer.from(k.slice(32, 64), "hex");
   const tail = k.slice(64);
+  if (iv.length !== 16 || salt.length !== 16) {
+    throw new AisDecryptError(
+      "IV/salt header is not 16 bytes each after hex decoding -- the export looks truncated; download it again.",
+    );
+  }
 
   // A pure-hex string also passes the base64 charset test -- try both decodings.
   const ctCandidates: Buffer[] = [];
@@ -79,20 +90,46 @@ export function decryptAis(
     );
   }
 
+  // Distinguish the two failure modes: a bad password fails the AES padding
+  // check, whereas a good password that yields non-JSON means the payload
+  // format moved. The remedies are completely different, so do not collapse
+  // them into one message.
+  let decryptedButNotJson = false;
   for (const pw of passwords) {
     const key = pbkdf2Sync(pw, salt, 1000, 32, "sha256");
     for (const ct of ctCandidates) {
+      let plaintext: string;
       try {
         const d = createDecipheriv("aes-256-cbc", key, iv);
-        const plaintext = Buffer.concat([d.update(ct), d.final()]);
-        return JSON.parse(plaintext.toString("utf8"));
+        plaintext = Buffer.concat([d.update(ct), d.final()]).toString("utf8");
       } catch {
-        // wrong candidate -- keep going
+        continue; // wrong key or wrong ciphertext encoding
+      }
+      try {
+        return JSON.parse(plaintext) as unknown;
+      } catch {
+        // AES-CBC accepts a wrong key whenever the trailing bytes happen to form
+        // valid PKCS#7 padding (~1 in 256, so ~3% across 8 attempts). Treating
+        // that as "the format changed" told users with a one-character DOB typo
+        // to file a bug report. Only a payload that actually starts like JSON is
+        // evidence of a format change; anything else is just a wrong key.
+        if (/^\s*[[{]/.test(plaintext)) decryptedButNotJson = true;
       }
     }
   }
+
+  if (decryptedButNotJson) {
+    throw new AisDecryptError(
+      "the password decrypted the file but the payload is not JSON -- the AIS export format has changed. Use the portal's CSV export for now and file an issue at https://github.com/Sagargupta16/itr-agent/issues with the AIS download date.",
+    );
+  }
+  if (opts.password) {
+    throw new AisDecryptError(
+      "the supplied `password` did not decrypt the file. The AIS password is your PAN in lower case followed by your date of birth as DDMMYYYY (with no separator); omit `password` and pass `pan` + `dob` to let the tool derive every known variant.",
+    );
+  }
   throw new AisDecryptError(
-    "decryption failed with every password candidate. The AIS format may have changed -- pass `password` explicitly, or use the CSV export as a fallback and file an issue.",
+    `decryption failed with all ${passwords.length} derived password candidates. Check that the DOB matches the one on the PAN (DDMMYYYY, date of incorporation for non-individuals) and that the file is this PAN's own AIS. If both are right, the password scheme has rotated: pass \`password\` explicitly, or use the CSV export and file an issue.`,
   );
 }
 
@@ -143,20 +180,37 @@ function labelText(l: AisLabel): string {
   return typeof l === "string" ? l : (l.name ?? "");
 }
 
+/** Read a column table defensively: the AIS JSON is not schema-validated by
+ * anyone, so every field can be absent, null, or the wrong type. Layout
+ * surprises must degrade to fewer rows, never to a throw. */
 function tableRows(
   table: AisColumnTable | undefined,
 ): Record<string, string>[] {
-  if (!table?.columnLabel || !table.columnData) return [];
-  const labels = table.columnLabel.map(labelText);
-  return table.columnData.map((row) => {
-    const out: Record<string, string> = {};
-    labels.forEach((label, i) => {
+  if (!table || typeof table !== "object") return [];
+  const rawLabels = table.columnLabel;
+  const rawData = table.columnData;
+  if (!Array.isArray(rawLabels) || !Array.isArray(rawData)) return [];
+  const labels = rawLabels.map((l) =>
+    l === null || l === undefined ? "" : labelText(l),
+  );
+  const out: Record<string, string>[] = [];
+  for (const row of rawData) {
+    if (!Array.isArray(row)) continue;
+    const record: Record<string, string> = {};
+    // Walk the ROW, not the label list. A hostile file can declare 200k labels
+    // against 200k one-cell rows; iterating labels per row makes that
+    // O(labels x rows) and a 3.5 MB file then blocks the single-threaded stdio
+    // server for ~97s. Cells beyond the row's own length carry no data anyway.
+    const width = Math.min(row.length, labels.length);
+    for (let i = 0; i < width; i++) {
+      const label = labels[i];
       const v = row[i];
       if (label && v !== null && v !== undefined && v !== "")
-        out[label] = String(v);
-    });
-    return out;
-  });
+        record[label] = String(v);
+    }
+    if (Object.keys(record).length > 0) out.push(record);
+  }
+  return out;
 }
 
 const AMOUNT_RE = /amount|value/i;
@@ -182,6 +236,15 @@ function enrich(
  * from columnLabel strings, matched by regex -- never by position. */
 export function parseAisDocument(doc: unknown): AisParsed {
   const warnings: string[] = [];
+  if (doc === null || typeof doc !== "object" || Array.isArray(doc)) {
+    return {
+      taxpayer: {},
+      rows: [],
+      warnings: [
+        "decrypted payload is not a JSON object -- nothing to normalize. Check the AIS download, and use the CSV export as a fallback.",
+      ],
+    };
+  }
   const d = doc as {
     partA?: AisColumnTable;
     partB?: { sections?: AisSection[] };
@@ -204,12 +267,19 @@ export function parseAisDocument(doc: unknown): AisParsed {
   }
 
   const rows: AisRow[] = [];
-  const sections = d.partB?.sections ?? [];
+  const rawSections = d.partB?.sections;
+  const sections = Array.isArray(rawSections) ? rawSections : [];
+  if (!Array.isArray(rawSections) && rawSections !== undefined) {
+    warnings.push("partB.sections is not an array -- unexpected AIS layout");
+  }
   if (sections.length === 0)
     warnings.push("partB.sections is empty -- no information rows");
 
   for (const section of sections) {
-    for (const element of section.elements ?? []) {
+    if (!section || typeof section !== "object") continue;
+    const elements = Array.isArray(section.elements) ? section.elements : [];
+    for (const element of elements) {
+      if (!element || typeof element !== "object") continue;
       const levels: [
         "l1" | "l2" | "element",
         AisColumnTable | undefined,

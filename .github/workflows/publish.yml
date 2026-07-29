@@ -12,8 +12,8 @@ jobs:
       id-token: write # npm trusted publishing (OIDC) + provenance
     steps:
       - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v6
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: pnpm
@@ -23,6 +23,7 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+
       - name: Check version matches release tag
         run: |
           PKG_VERSION=$(node -p "require('./package.json').version")
@@ -31,5 +32,54 @@ jobs:
             echo "package.json version ($PKG_VERSION) != release tag ($TAG)" >&2
             exit 1
           fi
+
+      - name: Check CHANGELOG has an entry for this version
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if ! grep -q "^## \[\?${PKG_VERSION}\]\?" CHANGELOG.md; then
+            echo "CHANGELOG.md has no heading for ${PKG_VERSION}" >&2
+            exit 1
+          fi
+
+      # Publish the exact artifact we just verified. v0.3.0 went out by hand and
+      # so carries no attestations; --provenance makes the signed build
+      # provenance mandatory, which only works from a workflow with id-token.
+      - name: Verify the tarball runs before publishing
+        run: |
+          npm pack --silent
+          TARBALL=$(realpath itr-agent-*.tgz)
+          mkdir -p /tmp/consumer && cd /tmp/consumer
+          npm init -y --silent > /dev/null
+          npm install --silent "$TARBALL"
+          out=$(printf '%s\n%s\n%s\n' \
+            '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"release","version":"0"}}}' \
+            '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+            '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"compute_tax","arguments":{"regime":"new","otherIncome":1500000}}}' \
+            | npx itr-agent 2>/dev/null)
+          node -e '
+            const msg = process.argv[1].split("\n").filter(Boolean).map(JSON.parse)
+              .find((m) => m.id === 2);
+            const total = msg && msg.result && msg.result.structuredContent
+              && msg.result.structuredContent.totalTax;
+            if (total !== 109200) {
+              throw new Error(`release candidate computed ${total}, expected 109200`);
+            }
+            console.log("ok release candidate computes 1,09,200");
+          ' "$out"
+
       # No token: authenticated via OIDC trusted publishing configured on npmjs.com
-      - run: npm publish --access public
+      - run: npm publish --access public --provenance
+
+      - name: Confirm the published version carries provenance
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          for attempt in 1 2 3 4 5; do
+            if npm view "itr-agent@${PKG_VERSION}" dist.attestations --json | grep -q 'provenance'; then
+              echo "ok itr-agent@${PKG_VERSION} has provenance attestations"
+              exit 0
+            fi
+            echo "registry not caught up yet (attempt ${attempt}), retrying in 15s"
+            sleep 15
+          done
+          echo "published ${PKG_VERSION} without provenance attestations" >&2
+          exit 1

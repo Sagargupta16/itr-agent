@@ -1,10 +1,13 @@
 {
   "fy": "2025-26",
   "ay": "2026-27",
-  "rulePackVersion": "1.1.0",
+  "rulePackVersion": "1.2.0",
   "sources": [
     "https://www.incometax.gov.in/iec/foportal/help/individual/return-applicable-1",
-    "Finance Act 2025 (new regime slabs, 87A rebate, standard deduction)"
+    "Finance Act 2025 (new regime slabs, 87A rebate, standard deduction)",
+    "Finance Act 2025 First Schedule Part I Paragraph A (surcharge bands; 25%/37% exclude 111A/112/112A/dividend income)",
+    "Income-tax Act s.111A proviso and s.112A(2) proviso (unexhausted basic exemption set off against listed-equity gains)",
+    "Income-tax Act s.288A/288B (rounding of total income and tax payable) and Rule 119A (interest base)"
   ],
   "newRegime": {
     "slabs": [
@@ -42,7 +45,9 @@
       "incomeThreshold": 1200000,
       "maxRebate": 60000,
       "marginalRelief": true,
-      "excludesSpecialRateIncome": true
+      "thresholdBasis": "normalIncome",
+      "allowAgainst111A": false,
+      "allowAgainst112A": false
     },
     "surchargeCapRate": 0.25
   },
@@ -65,6 +70,38 @@
         "rate": 0.3
       }
     ],
+    "slabsSenior": [
+      {
+        "upTo": 300000,
+        "rate": 0
+      },
+      {
+        "upTo": 500000,
+        "rate": 0.05
+      },
+      {
+        "upTo": 1000000,
+        "rate": 0.2
+      },
+      {
+        "upTo": null,
+        "rate": 0.3
+      }
+    ],
+    "slabsSuperSenior": [
+      {
+        "upTo": 500000,
+        "rate": 0
+      },
+      {
+        "upTo": 1000000,
+        "rate": 0.2
+      },
+      {
+        "upTo": null,
+        "rate": 0.3
+      }
+    ],
     "seniorExemption": 300000,
     "superSeniorExemption": 500000,
     "standardDeduction": 50000,
@@ -72,7 +109,6 @@
       "incomeThreshold": 500000,
       "maxRebate": 12500,
       "marginalRelief": false,
-      "excludesSpecialRateIncome": false,
       "thresholdBasis": "totalIncome",
       "allowAgainst111A": true,
       "allowAgainst112A": false
@@ -102,7 +138,11 @@
     "ltcg112AExemption": 125000,
     "grandfatheringDate": "2018-01-31",
     "rateChangeBoundary": "2024-07-23",
-    "debtSlabAcquisitionBoundary": "2023-04-01"
+    "debtSlabAcquisitionBoundary": "2023-04-01",
+    "basicExemptionSetOff": {
+      "against111A": true,
+      "against112A": true
+    }
   },
   "surcharge": {
     "slabs": [
@@ -124,7 +164,9 @@
       }
     ],
     "capitalGainsAndDividendCap": 0.15,
-    "marginalRelief": true
+    "marginalRelief": true,
+    "enhancedBandsExcludeSpecialRateIncome": true,
+    "enhancedBandRateFloor": 0.25
   },
   "cess": 0.04,
   "advanceTax": {
@@ -162,6 +204,11 @@
     "default": 5000,
     "incomeUpTo5L": 1000
   },
+  "itrEligibility": {
+    "simpleFormIncomeCap": 5000000,
+    "ltcg112ASimpleFormCap": 125000,
+    "agriIncomeCap": 5000
+  },
   "rounding": {
     "income288A": 10,
     "taxPayable288B": 10,
@@ -170,6 +217,10 @@
   "interest": {
     "ratePerMonth": 0.01,
     "partMonthIsFullMonth": true,
+    "s234A": {
+      "ratePerMonth": 0.01,
+      "fromDate": "dueDatePlus1"
+    },
     "s234B": {
       "trigger": "paidLt90PctAssessed",
       "fromDate": "AY-04-01"
@@ -230,6 +281,7 @@
   },
   "deduction80GG": {
     "capPerYear": 60000,
+    "capPerMonth": 5000,
     "pctOfATI": 0.25,
     "rentExcessOfATIPct": 0.1,
     "regimes": [
