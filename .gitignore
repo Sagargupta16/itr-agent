@@ -2,6 +2,12 @@
 node_modules/
 dist/
 
+# stray tsc emit next to the sources. `tsc -p tsconfig.test.json` without
+# --noEmit writes .js/.d.ts beside every .ts because that config widens rootDir
+# to the repo root, and biome then fails on the generated files.
+src/**/*.js
+src/**/*.d.ts
+
 # env / secrets
 .env
 .env.*
@@ -15,3 +21,10 @@ Thumbs.db
 
 # test artifacts
 coverage/
+
+# real tax documents used for local parser checks. These carry PAN, salary and
+# TDS data -- never commit them. Synthetic samples belong in tests/ instead.
+fixtures/*
+!fixtures/README.md
+*.26AS.txt
+*AIS*.json

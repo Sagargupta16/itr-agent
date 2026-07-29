@@ -1,7 +1,7 @@
 {
   "name": "itr-agent",
   "version": "0.3.0",
-  "description": "Local-first MCP server for Indian income tax: compute tax, compare regimes, plan advance tax, and parse tax documents -- entirely on your machine",
+  "description": "Local-first MCP filing agent for Indian income tax: pick your ITR form, compute tax, reconcile 26AS/AIS, and walk the filing checklist -- entirely on your machine",
   "keywords": [
     "mcp",
     "mcp-server",
@@ -32,7 +32,7 @@
   "engines": {
     "node": ">=22"
   },
-  "packageManager": "pnpm@11.10.0",
+  "packageManager": "pnpm@11.17.0",
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
@@ -40,19 +40,19 @@
     "test:watch": "vitest",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
     "inspect": "npx @modelcontextprotocol/inspector node dist/index.js",
     "prepublishOnly": "pnpm build"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.2",
-    "@types/node": "^26.1.0",
+    "@biomejs/biome": "^2.5.6",
+    "@types/node": "^26.1.2",
     "tsup": "^8.5.1",
-    "typescript": "^6.0.3",
-    "vitest": "^4.1.9"
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
   }
 }

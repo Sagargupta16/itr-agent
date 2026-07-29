@@ -18,7 +18,8 @@ export interface LossFlags {
 
 export interface ItrFormInput {
   residency: Residency;
-  /** Estimated gross total income in INR (before Chapter VI-A). */
+  /** TOTAL income in INR, i.e. AFTER Chapter VI-A deductions: that is the
+   * figure the Rs 50 lakh ITR-1/ITR-4 ceiling tests. */
   totalIncome: number;
   /** Count of house properties with income/loss (self-occupied counts). */
   houseProperties: number;
@@ -77,9 +78,10 @@ const DISCLAIMERS = [
   "Assumes an individual taxpayer (not HUF/firm/company).",
 ];
 
-const LTCG_112A_ITR1_CAP = 125000;
-const ITR1_4_INCOME_CAP = 5000000;
-const AGRI_CAP = 5000;
+/** Rupees in lakh, for reason strings built off rule-pack figures. */
+function lakh(n: number): string {
+  return `Rs ${(n / 100000).toLocaleString("en-IN")} lakh`;
+}
 
 /**
  * Recommend the ITR form (ITR-1/2/3/4) for an individual, with
@@ -97,8 +99,16 @@ export function recommendItrForm(
   const notes: string[] = [];
 
   const businessContinuity = input.losses.business || input.losses.speculative;
+  // `presumptive` counts as a business side even without hasBusinessIncome:
+  // 44AD/44ADA income IS business income, and without this a presumptive filer
+  // who forgot to also tick hasBusinessIncome would be routed to ITR-1.
   const hasBusinessSide =
-    input.hasBusinessIncome || input.isPartnerInFirm || businessContinuity;
+    input.hasBusinessIncome ||
+    input.presumptive ||
+    input.isPartnerInFirm ||
+    businessContinuity;
+
+  const caps = pack.itrEligibility;
 
   // Shared ITR-1 AND ITR-4 disqualifiers (the "simple form" gates).
   const simpleFormBlocks: string[] = [];
@@ -106,15 +116,17 @@ export function recommendItrForm(
     simpleFormBlocks.push(
       "only ordinarily-resident individuals may file ITR-1/ITR-4 (NRI/RNOR excluded)",
     );
-  if (input.totalIncome > ITR1_4_INCOME_CAP)
-    simpleFormBlocks.push("total income exceeds Rs 50 lakh");
+  if (input.totalIncome > caps.simpleFormIncomeCap)
+    simpleFormBlocks.push(
+      `total income exceeds ${lakh(caps.simpleFormIncomeCap)}`,
+    );
   if (input.stcg111A > 0)
     simpleFormBlocks.push(
       "STCG under 111A cannot be reported in ITR-1/ITR-4 (only LTCG 112A up to Rs 1.25L is allowed)",
     );
-  if (input.ltcg112A > LTCG_112A_ITR1_CAP)
+  if (input.ltcg112A > caps.ltcg112ASimpleFormCap)
     simpleFormBlocks.push(
-      "LTCG under 112A exceeds the Rs 1,25,000 ITR-1/ITR-4 ceiling",
+      `LTCG under 112A exceeds the Rs ${caps.ltcg112ASimpleFormCap.toLocaleString("en-IN")} ITR-1/ITR-4 ceiling`,
     );
   if (input.hasOtherCapitalGains)
     simpleFormBlocks.push(
@@ -133,8 +145,10 @@ export function recommendItrForm(
   if (input.isDirector) simpleFormBlocks.push("director in a company");
   if (input.holdsUnlistedShares)
     simpleFormBlocks.push("held unlisted equity shares during the year");
-  if (input.agriIncome > AGRI_CAP)
-    simpleFormBlocks.push("agricultural income exceeds Rs 5,000");
+  if (input.agriIncome > caps.agriIncomeCap)
+    simpleFormBlocks.push(
+      `agricultural income exceeds Rs ${caps.agriIncomeCap.toLocaleString("en-IN")}`,
+    );
   if (input.esopDeferral)
     simpleFormBlocks.push("tax deferred on startup ESOPs (s80-IAC)");
   if (input.hasLotteryOrGamingIncome)
@@ -166,7 +180,7 @@ export function recommendItrForm(
     if (presumptiveOk) {
       recommended = "ITR-4";
       reasons.push(
-        "presumptive scheme (44AD/44ADA/44AE) with income up to Rs 50L and no ITR-4 disqualifier",
+        `presumptive scheme (44AD/44ADA/44AE) with income up to ${lakh(caps.simpleFormIncomeCap)} and no ITR-4 disqualifier`,
       );
     } else {
       recommended = "ITR-3";
@@ -199,13 +213,13 @@ export function recommendItrForm(
   } else {
     recommended = "ITR-1";
     reasons.push(
-      "resident individual, income up to Rs 50L from salary/one house property/other sources, LTCG 112A within Rs 1.25L, no disqualifier",
+      `resident individual, income up to ${lakh(caps.simpleFormIncomeCap)} from salary/one house property/other sources, LTCG 112A within Rs ${caps.ltcg112ASimpleFormCap.toLocaleString("en-IN")}, no disqualifier`,
     );
   }
 
   if (
     input.ltcg112A > 0 &&
-    input.ltcg112A <= LTCG_112A_ITR1_CAP &&
+    input.ltcg112A <= caps.ltcg112ASimpleFormCap &&
     (recommended === "ITR-1" || recommended === "ITR-4")
   ) {
     notes.push(

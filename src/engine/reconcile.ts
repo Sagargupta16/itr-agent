@@ -53,23 +53,68 @@ export interface ReconcileReport {
   findings: ReconcileFinding[];
   checksRun: string[];
   checksSkipped: { id: string; reason: string }[];
+  /** TDS in 26AS grouped by the income head its section implies, so the filer
+   * knows which schedule each credit belongs against. Sections outside the rule
+   * pack's map land under "unmapped" rather than being dropped. */
+  tdsByHead: { head: string; sections: string[]; tdsDeposited: number }[];
   disclaimers: string[];
 }
 
-function tier(
-  delta: number,
-  pack: RulePack,
-): "pass" | "info" | "warn" | "high" {
-  const t = pack.reconcile?.toleranceRupees ?? {
-    pass: 10,
-    warn: 100,
-    high: 10000,
-  };
+type Tier = "pass" | "info" | "warn" | "high";
+
+function tier(delta: number, pack: RulePack): Tier {
+  const t = pack.reconcile.toleranceRupees;
   const d = Math.abs(delta);
   if (d <= t.pass) return "pass";
   if (d < t.warn) return "info";
   if (d < t.high) return "warn";
   return "high";
+}
+
+/** Map the tolerance tier onto a finding severity. `info` deltas are inside the
+ * warn tolerance, so they are reported as low rather than folded into medium. */
+function severityFor(t: Tier): ReconcileFinding["severity"] {
+  if (t === "high") return "high";
+  if (t === "warn") return "medium";
+  return "low";
+}
+
+/** Sum rupee amounts without float drift: 26AS figures carry paise, and a plain
+ * reduce over 40 rows can land Rs 0.0000001 off and trip an exact comparison. */
+function sumRupees(values: number[]): number {
+  const paise = values.reduce((s, v) => s + Math.round(v * 100), 0);
+  return paise / 100;
+}
+
+/** Group 26AS TDS by income head using the rule pack's section map. A section
+ * the pack does not know is reported as "unmapped" -- silently dropping it would
+ * hide TDS the filer still has to place in a schedule. */
+function groupTdsByHead(
+  rows: TdsSummaryEntry[],
+  pack: RulePack,
+): ReconcileReport["tdsByHead"] {
+  const map = pack.tdsSectionToHead;
+  const byHead = new Map<
+    string,
+    { sections: Set<string>; amounts: number[] }
+  >();
+
+  for (const row of rows) {
+    const section = row.section?.trim() ?? "";
+    const head = (section && map[section]) || "unmapped";
+    const bucket = byHead.get(head) ?? { sections: new Set(), amounts: [] };
+    if (section) bucket.sections.add(section);
+    bucket.amounts.push(row.tdsDeposited);
+    byHead.set(head, bucket);
+  }
+
+  return [...byHead.entries()]
+    .map(([head, b]) => ({
+      head,
+      sections: [...b.sections].sort(),
+      tdsDeposited: sumRupees(b.amounts),
+    }))
+    .sort((a, b) => b.tdsDeposited - a.tdsDeposited);
 }
 
 export function reconcile(
@@ -81,7 +126,7 @@ export function reconcile(
   const checksSkipped: { id: string; reason: string }[] = [];
 
   const tds26 = input.form26asTds ?? [];
-  const total26asTds = tds26.reduce((s, e) => s + e.tdsDeposited, 0);
+  const total26asTds = sumRupees(tds26.map((e) => e.tdsDeposited));
 
   // H1: return TDS claim vs 26AS deposited (exact -- CPC restricts to 26AS)
   if (input.return?.tdsClaimed !== undefined && tds26.length > 0) {
@@ -145,7 +190,7 @@ export function reconcile(
     if (delta > 0 && t !== "pass") {
       findings.push({
         id: "H4",
-        severity: t === "high" ? "high" : "medium",
+        severity: severityFor(t),
         title: "AIS interest exceeds interest declared in return",
         figures: {
           a: input.ais.interestTotal,
@@ -175,7 +220,7 @@ export function reconcile(
     if (delta > 0 && t !== "pass") {
       findings.push({
         id: "H5",
-        severity: t === "high" ? "high" : "medium",
+        severity: severityFor(t),
         title: "AIS dividend exceeds dividend declared in return",
         figures: {
           a: input.ais.dividendTotal,
@@ -197,19 +242,41 @@ export function reconcile(
   // M1: Form 16 Part A deposited vs 26AS per TAN (exact)
   if (input.form16 && tds26.length > 0) {
     checksRun.push("M1");
+    // Index once instead of re-filtering per Form 16: the LLM composes both
+    // arrays, so a mis-scaled call made this O(form16 x tds26).
+    const tds26ByTan = new Map<string, typeof tds26>();
+    for (const e of tds26) {
+      const bucket = tds26ByTan.get(e.tan);
+      if (bucket) bucket.push(e);
+      else tds26ByTan.set(e.tan, [e]);
+    }
     for (const f16 of input.form16) {
-      const from26 = tds26
-        .filter((e) => e.tan === f16.tan)
-        .reduce((s, e) => s + e.tdsDeposited, 0);
-      if (from26 > 0 && f16.tdsDeposited !== from26) {
+      const rows26 = tds26ByTan.get(f16.tan) ?? [];
+      const from26 = sumRupees(rows26.map((e) => e.tdsDeposited));
+      // No rows at all is the WORST case (nothing deposited against this TAN),
+      // so it must not be skipped the way a zero-TDS-but-present TAN can be.
+      if (rows26.length === 0) {
         findings.push({
           id: "M1",
-          severity: "medium",
+          severity: "high",
+          title: `Form 16 shows TDS for TAN ${f16.tan} but 26AS has no entry for that TAN`,
+          figures: { a: f16.tdsDeposited, b: 0, delta: f16.tdsDeposited },
+          remedy:
+            "The deductor has not filed (or has mis-quoted your PAN in) their TDS return: nothing is creditable until 26AS shows it. Contact the deductor before claiming this TDS.",
+          noticePreempted: "143(1) adjustment",
+        });
+        continue;
+      }
+      const delta = f16.tdsDeposited - from26;
+      if (delta !== 0) {
+        findings.push({
+          id: "M1",
+          severity: severityFor(tier(delta, pack)),
           title: `Form 16 TDS deposited (TAN ${f16.tan}) differs from 26AS`,
           figures: {
             a: f16.tdsDeposited,
             b: from26,
-            delta: f16.tdsDeposited - from26,
+            delta,
           },
           remedy:
             "Deductor filing inconsistency between 24Q and OLTAS -- ask the employer to verify their TDS return.",
@@ -246,11 +313,73 @@ export function reconcile(
     });
   }
 
+  // M4: salary declared in the return vs the sum of Form 16 gross salaries.
+  // A declared figure BELOW the forms is the 139(9)/143(1)(a) trigger; above is
+  // legitimate (arrears, perquisites, a missing Form 16).
+  const f16WithSalary = (input.form16 ?? []).filter(
+    (f) => f.grossSalary !== undefined,
+  );
+  if (
+    input.return?.salaryDeclared !== undefined &&
+    f16WithSalary.length > 0 &&
+    f16WithSalary.length === (input.form16?.length ?? 0)
+  ) {
+    checksRun.push("M4");
+    const totalF16Salary = sumRupees(
+      f16WithSalary.map((f) => f.grossSalary ?? 0),
+    );
+    const delta = totalF16Salary - input.return.salaryDeclared;
+    const t = tier(delta, pack);
+    if (delta > 0 && t !== "pass") {
+      findings.push({
+        id: "M4",
+        severity: severityFor(t),
+        title:
+          "Salary declared in return is below the total Form 16 gross salary",
+        figures: {
+          a: totalF16Salary,
+          b: input.return.salaryDeclared,
+          delta,
+        },
+        remedy:
+          "Declare GROSS salary from every Form 16, then claim exemptions (HRA, LTA) and the standard deduction as separate lines -- netting them into the salary figure is the top 143(1)(a) trigger. If a second employer is missing, add it.",
+        noticePreempted: "143(1)(a)(vi)",
+      });
+    }
+  } else {
+    checksSkipped.push({
+      id: "M4",
+      reason: "needs return.salaryDeclared + grossSalary on every form16 entry",
+    });
+  }
+
+  // M5: 26AS rows with TDS deposited but no amount paid/credited. ITR schedule
+  // TDS needs both columns, and a blank gross is a 139(9) defect risk.
+  if (tds26.length > 0) {
+    checksRun.push("M5");
+    const orphans = tds26.filter(
+      (e) => e.tdsDeposited > 0 && !(e.amountPaid > 0),
+    );
+    if (orphans.length > 0) {
+      findings.push({
+        id: "M5",
+        severity: "low",
+        title: `${orphans.length} 26AS row(s) show TDS deposited with no amount paid/credited`,
+        remedy:
+          "Schedule TDS wants the gross amount alongside the tax deducted. Re-check the parsed rows against the TRACES export (a blank gross column is usually a parse artefact, occasionally a deductor error) and fill the gross from the payer's statement.",
+        noticePreempted: "139(9) defect",
+      });
+    }
+  } else {
+    checksSkipped.push({ id: "M5", reason: "needs form26asTds" });
+  }
+
   return {
     fy: pack.fy,
     findings,
     checksRun,
     checksSkipped,
+    tdsByHead: groupTdsByHead(tds26, pack),
     disclaimers: [
       "Tolerances beyond the Rs 10 statutory rounding slack are tool heuristics, not CPC rules.",
       "A return figure lower than form figures may be legitimately explained by HRA exemption, standard deduction, or Chapter VI-A deductions -- review findings before acting.",

@@ -19,7 +19,7 @@ pnpm test
 - **stdout is the MCP channel.** All logging goes to stderr. One stray `console.log` breaks the protocol.
 - **Local-only is the product.** PRs adding network transports, telemetry, or cloud calls will be declined.
 - **Parsers are tolerant**: collect `warnings[]`, never throw on layout surprises; error messages must name the fix.
-- Never commit real tax documents, PANs, or personal data -- fixtures are synthetic only.
+- Never commit real tax documents, PANs, or personal data. Anything checked in must be synthetic; `fixtures/` is gitignored precisely because it is the scratch directory where a real 26AS or AIS export lands while you check a parser locally.
 - Conventional commits; `pnpm lint && pnpm typecheck && pnpm test` must pass.
 
 ## Adding a fiscal year

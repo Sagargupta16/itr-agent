@@ -7,23 +7,142 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # Matrix because contributors run Windows (CRLF checkouts, backslash paths in
+    # resolveDataDir) and the package declares node >=22, so 22 must pass too.
+    # 22 is the floor (LTS until 2027-04-30), 24 the active LTS, 26 the current
+    # release -- catching a breakage there before it becomes LTS in Oct 2026.
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node-version: [22, 24, 26]
     steps:
       - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v6
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version: ${{ matrix.node-version }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
-      - name: Smoke test stdio server
+
+      # A tools/list grep only proves the process booted. Assert real computed
+      # figures end to end: 12.75L salary comes out at zero tax (75K standard
+      # deduction brings it to 12L, then the 87A rebate clears it), and 15L of
+      # other income at 1,05,000 slab tax + 4% cess = 1,09,200. If the rule pack
+      # fails to resolve from dist/, or structuredContent regresses, this fails.
+      - name: Smoke test stdio server (asserts computed tax)
+        shell: bash
         run: |
-          printf '%s\n%s\n%s\n' \
+          out=$(printf '%s\n%s\n%s\n%s\n' \
+            '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"0"}}}' \
+            '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+            '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"compute_tax","arguments":{"regime":"new","salaryIncome":1275000}}}' \
+            '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"compute_tax","arguments":{"regime":"new","otherIncome":1500000}}}' \
+            | node dist/index.js 2>/dev/null)
+          echo "$out"
+          node -e '
+            const lines = process.argv[1].trim().split("\n").filter(Boolean).map(JSON.parse);
+            const byId = new Map(lines.filter((m) => m.id).map((m) => [m.id, m]));
+            const get = (id) => {
+              const m = byId.get(id);
+              if (!m || m.error) throw new Error(`id ${id} failed: ${JSON.stringify(m)}`);
+              const sc = m.result && m.result.structuredContent;
+              if (!sc) throw new Error(`id ${id} returned no structuredContent`);
+              return sc;
+            };
+            const rebated = get(2);
+            const taxed = get(3);
+            const check = (label, actual, expected) => {
+              if (actual !== expected) {
+                throw new Error(`${label}: expected ${expected}, got ${actual}`);
+              }
+              console.log(`ok ${label} = ${actual}`);
+            };
+            check("12.75L salary totalTax", rebated.totalTax, 0);
+            check("12.75L salary rebate87A", rebated.rebate87A, 60000);
+            check("15L other income slabTax", taxed.slabTax, 105000);
+            check("15L other income totalTax", taxed.totalTax, 109200);
+            if (!taxed.disclaimers || !taxed.disclaimers.length) {
+              throw new Error("disclaimers missing from compute_tax output");
+            }
+          ' "$out"
+
+      # stdout is the MCP channel: one stray console.log corrupts the protocol.
+      # Every line the server writes must parse as JSON-RPC.
+      - name: Assert stdout carries only JSON-RPC
+        shell: bash
+        run: |
+          out=$(printf '%s\n%s\n%s\n' \
             '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"0"}}}' \
             '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
             '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
-            | node dist/index.js 2>/dev/null | grep -q '"compute_tax"'
+            | node dist/index.js 2>/dev/null)
+          node -e '
+            const lines = process.argv[1].split("\n").filter((l) => l.trim());
+            if (!lines.length) throw new Error("server wrote nothing to stdout");
+            for (const line of lines) {
+              const msg = JSON.parse(line);
+              if (msg.jsonrpc !== "2.0") {
+                throw new Error(`non-JSON-RPC line on stdout: ${line}`);
+              }
+            }
+            console.log(`ok ${lines.length} JSON-RPC lines, no stray stdout`);
+          ' "$out"
+
+  package:
+    # The npm tarball is what users actually run via npx. `files` must carry both
+    # dist/ and data/ -- without data/ the rule pack cannot resolve and every
+    # tool fails at runtime, which no source-tree test would catch.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+
+      - name: Pack and inspect contents
+        run: |
+          npm pack --silent
+          TARBALL=$(ls itr-agent-*.tgz)
+          tar -tzf "$TARBALL"
+          for required in package/dist/index.js package/data/fy2025-26.json package/README.md package/LICENSE; do
+            if ! tar -tzf "$TARBALL" | grep -qx "$required"; then
+              echo "tarball is missing $required" >&2
+              exit 1
+            fi
+          done
+          if tar -tzf "$TARBALL" | grep -qE 'package/(tests|fixtures|src)/'; then
+            echo "tarball ships tests/fixtures/src -- tighten the files field" >&2
+            exit 1
+          fi
+
+      - name: Install the tarball and run it as a user would
+        run: |
+          TARBALL=$(realpath itr-agent-*.tgz)
+          mkdir -p /tmp/consumer && cd /tmp/consumer
+          npm init -y --silent > /dev/null
+          npm install --silent "$TARBALL"
+          out=$(printf '%s\n%s\n%s\n' \
+            '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"0"}}}' \
+            '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+            '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"compute_tax","arguments":{"regime":"new","otherIncome":1500000}}}' \
+            | npx itr-agent 2>/dev/null)
+          node -e '
+            const msg = process.argv[1].split("\n").filter(Boolean).map(JSON.parse)
+              .find((m) => m.id === 2);
+            const total = msg && msg.result && msg.result.structuredContent
+              && msg.result.structuredContent.totalTax;
+            if (total !== 109200) {
+              throw new Error(`installed package computed ${total}, expected 109200`);
+            }
+            console.log("ok installed tarball computes 1,09,200");
+          ' "$out"

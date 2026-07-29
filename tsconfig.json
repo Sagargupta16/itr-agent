@@ -1,7 +1,5 @@
 {
   "compilerOptions": {
-    // tsup's dts rollup injects baseUrl, deprecated in TS 6 -- silence until tsup catches up
-    "ignoreDeprecations": "6.0",
     "target": "ES2023",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",

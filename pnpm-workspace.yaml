@@ -1,2 +1,23 @@
 allowBuilds:
   esbuild: true
+overrides:
+  # tsup and vite both float postcss on a range that still resolves to 8.5.16,
+  # which carries GHSA-r28c-9q8g-f849 (path traversal). Dev-only -- postcss never
+  # ships, `files` is dist + data -- but pin it so `pnpm audit` stays clean.
+  postcss: '>=8.5.18'
+  # tsup pins esbuild ^0.27.0 but the fix for GHSA-g7r4-m6w7-qqqr is 0.28.1, so
+  # clearing it means stepping outside tsup's declared range. Verified: build and
+  # the 98-test suite pass on 0.28.1. Same dev-only reasoning as postcss.
+  esbuild: '>=0.28.1'
+minimumReleaseAgeExclude:
+  - '@modelcontextprotocol/sdk@1.30.0'
+  - '@types/node@26.1.2'
+  - '@biomejs/biome@2.5.6'
+  - '@biomejs/cli-darwin-arm64@2.5.6'
+  - '@biomejs/cli-darwin-x64@2.5.6'
+  - '@biomejs/cli-linux-arm64-musl@2.5.6'
+  - '@biomejs/cli-linux-arm64@2.5.6'
+  - '@biomejs/cli-linux-x64-musl@2.5.6'
+  - '@biomejs/cli-linux-x64@2.5.6'
+  - '@biomejs/cli-win32-arm64@2.5.6'
+  - '@biomejs/cli-win32-x64@2.5.6'

@@ -44,18 +44,18 @@ Every Indian tax tool wants your data on their servers. itr-agent flips it: your
 | --- | --- |
 | `recommend_itr_form` | ITR-1/2/3/4 selection with rule-by-rule reasoning and loss-continuity awareness: brought-forward business losses force ITR-3 even with zero current-year business income (Schedule CFL) |
 | `filing_checklist` | Ordered, form-specific walkthrough: documents, reconciliation, computation, portal steps schedule by schedule, e-verification |
-| `compute_tax` | Full FY 2025-26 (AY 2026-27) computation: new/old regime slabs, standard deduction, 87A rebate with marginal relief (old regime: total-income threshold, offsets 111A), 111A (20%) / 112A (12.5% above 1.25L) capital gains, surcharge with the 15% gains cap, 4% cess |
+| `compute_tax` | Full FY 2025-26 (AY 2026-27) computation: new/old regime slabs (incl. the senior and super-senior slab sets), standard deduction, 87A rebate (new regime: Rs 60,000 up to Rs 12L with marginal relief, never offsetting 111A/112A tax; old regime: Rs 12,500 on total income up to Rs 5L, no marginal relief, offsets 111A), 111A (20%) / 112A (12.5% above 1.25L) capital gains with the unexhausted-basic-exemption set-off, surcharge with the 15% gains cap and its own marginal relief, 4% cess, s.288A/288B rounding |
 | `compare_regimes` | Old vs new side by side, recommended regime, savings amount |
 | `schedule_advance_tax` | Jun/Sep/Dec/Mar installment plan (15/45/75/100%) with shortfall tracking |
-| `compute_interest_234` | Sections 234B/234C interest with the statutory 12%/36% safe harbors and Rule 119A rounding (principal floored to Rs 100, part month = full month) |
-| `compute_hra` | HRA exemption per Rule 2A, period-wise (least of three limbs; FY 2025-26 metros: Delhi/Mumbai/Kolkata/Chennai) + the 80GG alternative |
+| `compute_interest_234` | Sections 234A/234B/234C interest with the statutory 12%/36% safe harbors, the s.234B(2) self-assessment payment ladder, and Rule 119A rounding (principal floored to Rs 100, part month = full month). Reports which sections it skipped and why |
+| `compute_hra` | HRA exemption per Rule 2A, period-wise (least of three limbs; FY 2025-26 metros: Delhi/Mumbai/Kolkata/Chennai) + the 80GG alternative, with its Rs 5,000-per-month cap and the bars under the new regime and alongside HRA |
 | `list_deductions` | Old-regime deduction checklist with statutory caps (80C, 80CCD(1B), 80D tiers, HRA metros) |
 | `parse_form26as` | Parse the caret-delimited Form 26AS Text export from TRACES into structured TDS entries |
 | `parse_ais` | Decrypt + parse the AIS JSON export on-device (AES-256-CBC/PBKDF2 with the password derived from PAN + DOB); normalized rows with label-matched amounts/dates/codes |
 | `reconcile_documents` | Form 16 vs AIS vs 26AS mismatch report -- the checks that pre-empt 143(1)(a) intimations and 139(9) defect notices (TDS over-claim, missing employer, undeclared AIS interest/dividend) |
 | `list_tax_years` | Supported fiscal years + AY 2026-27 filing deadlines |
 
-All tools are read-only (`readOnlyHint: true`) and return typed `structuredContent`.
+All tools are read-only (`readOnlyHint: true`), take zod-validated inputs, and return `structuredContent` alongside the human-readable text.
 
 ## Install
 
@@ -106,16 +106,21 @@ Honest boundaries, so you know before you rely on it:
 
 - **Resident individuals, FY 2025-26 (AY 2026-27).** NRI/RNOR computation differs (the form recommendation accounts for residency, the tax engine assumes resident).
 - **No filing.** There is no public API to submit an ITR; only you or an authorized ERI can file. The agent prepares and verifies everything, then hands over.
-- **Not yet modeled:** business P&L computation (presumptive supported in advance-tax/interest logic), crypto/VDA (115BBH), loss set-off arithmetic ([#4](https://github.com/Sagargupta16/itr-agent/issues/4)), Schedule FA valuation ([#5](https://github.com/Sagargupta16/itr-agent/issues/5)).
+- **You supply the income figures.** `compute_tax` computes tax on the heads you give it: salary, other income, 111A STCG, 112A LTCG, and old-regime deductions as a single total. It does not itself compute house property (30% standard deduction, 24(b) interest), other capital-gains heads (112 debt/property, 115BBH crypto, slab-rate debt MF under 50AA), or business P&L -- work those out separately, or with `list_deductions` for the Chapter VI-A caps, and pass the totals in.
+- **Not yet modeled:** house property and business P&L computation (a `presumptive` flag exists, but only to pick the single-installment 234C schedule and to steer the form recommendation -- 44AD/44ADA income itself is not computed), crypto/VDA (115BBH), non-equity capital gains, loss set-off arithmetic ([#4](https://github.com/Sagargupta16/itr-agent/issues/4)), Schedule FA valuation ([#5](https://github.com/Sagargupta16/itr-agent/issues/5)), Form 16 PDF parsing (`reconcile_documents` takes Form 16 figures as input, it does not read the PDF), broker capital-gains statements ([#7](https://github.com/Sagargupta16/itr-agent/issues/7)).
+- **Transaction-date rules not yet split.** The engine applies FY 2025-26 rates uniformly; the 23-Jul-2024 capital-gains rate flip and the 1-Oct-2024 buyback change matter for FY 2024-25 returns, which this pack does not cover.
+- **The encrypted AIS file is not a safe place to store your data.** Its password is your PAN plus your date of birth, stretched with only 1,000 PBKDF2-SHA256 iterations. Once someone knows your PAN, every plausible DOB can be tried in about 4 seconds single-threaded (measured on a laptop: 0.11 ms per key derivation over a ~36,600-date space). That is the portal's scheme, not this tool's choice, and nothing here can strengthen it -- treat a downloaded AIS export as effectively unencrypted and delete it when you are done.
+- **`parse_ais` decryption is unproven on a live export.** The AIS password scheme is reverse-engineered from open-source utilities and verified against this repo's synthetic round-trip, never against a file the portal actually produced. If it fails, the error tells you to pass `password` explicitly or use the portal's CSV export, and [an issue report](https://github.com/Sagargupta16/itr-agent/issues) with your download date helps fix it. Every other tool is unaffected.
 - **Not tax advice.** Complex cases belong with a CA. Every output says so.
 
 ## Design principles
 
-- **Local-only.** stdio transport, no network calls, no telemetry. Your PAN never leaves the process (and is masked in text output). AIS decryption happens entirely on-device with Node's crypto -- the reverse-engineered password scheme has un-peppered fallbacks and an explicit `password` override in case the format rotates.
-- **The LLM never does math.** Every rupee is computed by pure functions over `data/fy2025-26.json`. Golden-file tests pin the engine to published worked examples (the 12L zero-tax case, the 12,10,000 marginal-relief case, the 12,70,588 relief exhaustion point).
+- **Local-only.** stdio transport, no network calls, no telemetry, no accounts. Your documents are read from disk by this process and never uploaded anywhere. AIS decryption happens entirely on-device with Node's crypto -- the reverse-engineered password scheme has un-peppered fallbacks and an explicit `password` override in case the format rotates.
+- **What your MCP client still sees.** Parsed output is returned to whatever client you connected, so if that client is a hosted LLM, the parsed contents reach that provider like any other message. PAN is masked in the human-readable text mirror, but the `structuredContent` payload carries the full parsed document (PAN, TANs, deductor names, amounts) because downstream tools need it. Local-only describes this server, not your whole stack -- for maximum privacy, run it against a local model.
+- **The LLM never does math.** Every rupee is computed by pure functions over `data/fy2025-26.json`. 109 tests pin the engine to published worked examples and to statute: the 12L zero-tax case, the 12,10,000 marginal-relief case, the 12,70,588 relief exhaustion point on both sides, the surcharge bands with the First Schedule exclusion of capital-gains income, all three old-regime age bands, and the 234A/234B/234C/HRA/80GG golden cases.
 - **The agent drives, the engine decides.** The interview sequencing is a prompt; every number and every form rule is deterministic code. Nothing is estimated.
 - **Year-parameterized.** Rules live in per-FY JSON packs. FY 2026-27 (Budget 2026: Form 16 renamed to Form 130, 8 HRA metros, buyback reversion) lands as a new pack, not code changes.
-- **Not tax advice.** Every response carries disclaimers and the rule-pack version. Verify against the official utility before filing.
+- **Not tax advice.** Every tool that computes a rupee figure returns a `disclaimers` array and the fiscal year it applied; `compute_tax`, `compute_hra` and `list_tax_years` also return the exact `rulePackVersion`. Verify against the official utility before filing.
 
 ## Roadmap
 
