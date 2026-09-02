@@ -54,6 +54,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 - `pnpm-workspace.yaml` pins `postcss >=8.5.18` and `esbuild >=0.28.1` via overrides. Both are dev-only (neither ships in the package `files`), but the transitive resolutions carried GHSA-r28c-9q8g-f849 and GHSA-g7r4-m6w7-qqqr; `pnpm audit` is now clean
 - Test suite grown to 109 tests
 
+## [0.3.1] - 2026-09-02
+
+### Security
+
+- `pnpm-workspace.yaml` pins three runtime transitives of the MCP SDK past their Dependabot alerts: `hono >=4.12.34` (resolves 4.13.5; GHSA-f23p-vx2j-j53r, GHSA-54fx-42gc-7vw4, GHSA-8j4g-w8fx-2239, GHSA-79qm-7rj5-m7r9), `fast-uri >=3.1.5 <4` (resolves 3.1.6, capped inside ajv's declared ^3 range; GHSA-7p8r-x3mc-p8w7, high), and `ip-address >=10.3.1` (resolves 10.7.0; GHSA-mwp4-54f8-5fhr high, GHSA-4xrf-jv44-h6hh, GHSA-22jq-vg5j-6vgg)
+- `nanoid >=3.3.18 <4` pinned alongside them (dev-only, via postcss; GHSA-2v37-7h3g-55p8, high) -- capped below 4 because nanoid 4+ is ESM-only and postcss requires it as CJS. `pnpm audit` is clean again
+
 ## [0.3.0] - 2026-07-21
 
 ### Changed

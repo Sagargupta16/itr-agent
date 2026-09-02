@@ -9,6 +9,22 @@ overrides:
   # clearing it means stepping outside tsup's declared range. Verified: build and
   # the 98-test suite pass on 0.28.1. Same dev-only reasoning as postcss.
   esbuild: '>=0.28.1'
+  # The MCP SDK resolves hono 4.12.27 (directly and via @hono/node-server), which
+  # carries GHSA-f23p-vx2j-j53r, GHSA-79qm-7rj5-m7r9, GHSA-54fx-42gc-7vw4 and
+  # GHSA-8j4g-w8fx-2239. Runtime -- the SDK is a real dependency -- so pin the fix.
+  hono: '>=4.12.34'
+  # ajv (via the MCP SDK) resolves fast-uri 3.1.4, which carries
+  # GHSA-7p8r-x3mc-p8w7 (high). Runtime, same reasoning as hono. Capped below 4
+  # so ajv stays inside its declared ^3 range.
+  fast-uri: '>=3.1.5 <4'
+  # express-rate-limit (via the MCP SDK) resolves ip-address 10.2.0, which carries
+  # GHSA-mwp4-54f8-5fhr (high), GHSA-4xrf-jv44-h6hh and GHSA-22jq-vg5j-6vgg.
+  # Runtime, same reasoning as hono.
+  ip-address: '>=10.3.1'
+  # postcss (via tsup and vite) resolves nanoid 3.3.11, which carries
+  # GHSA-2v37-7h3g-55p8 (high). Dev-only, same reasoning as postcss. Capped below
+  # 4 because nanoid 4+ is ESM-only and postcss requires it as CJS.
+  nanoid: '>=3.3.18 <4'
 minimumReleaseAgeExclude:
   - '@modelcontextprotocol/sdk@1.30.0'
   - '@types/node@26.1.2'
