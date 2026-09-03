@@ -54,6 +54,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 - `pnpm-workspace.yaml` pins `postcss >=8.5.18` and `esbuild >=0.28.1` via overrides. Both are dev-only (neither ships in the package `files`), but the transitive resolutions carried GHSA-r28c-9q8g-f849 and GHSA-g7r4-m6w7-qqqr; `pnpm audit` is now clean
 - Test suite grown to 109 tests
 
+## [0.3.3] - 2026-09-03
+
+### Security
+
+- `pnpm-workspace.yaml` pins `qs >=6.16.0` (resolves 6.16.0), a runtime transitive of the MCP SDK via express and body-parser, past GHSA-4mjr-xmp4-gh2g (Denial of Service via attacker-controlled isBuffer) and GHSA-x5fp-wj9c-mxmx (array-limit bypass via bracket-key comma parsing), both medium. `pnpm audit` stays clean
+
 ## [0.3.2] - 2026-09-03
 
 ### Fixed
