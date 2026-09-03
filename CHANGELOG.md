@@ -54,6 +54,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 - `pnpm-workspace.yaml` pins `postcss >=8.5.18` and `esbuild >=0.28.1` via overrides. Both are dev-only (neither ships in the package `files`), but the transitive resolutions carried GHSA-r28c-9q8g-f849 and GHSA-g7r4-m6w7-qqqr; `pnpm audit` is now clean
 - Test suite grown to 109 tests
 
+## [0.3.2] - 2026-09-03
+
+### Fixed
+
+- AIS decrypt could still misreport a wrong password as "the export format has changed": the format-change classifier only sniffed the first character of the decrypted payload, and a wrong AES-CBC key that survives the PKCS#7 padding check (~1 in 255) produces garbage that opens with `{` or `[` about 2 in 256 times. Measured over 10^6 wrong keys: 3,844 padding survivors, 23 of them bracket-first -- enough to flake the 400-DOB regression sweep in ~3.6% of runs (and one CI matrix job in ~5). Claiming a format change now also requires the entire payload to decode as valid UTF-8 (`node:buffer` `isUtf8`), which uniform random bytes essentially never satisfy (0 of the same 10^6); a genuinely rotated but textual export still classifies as a format change, and the success path is untouched
+
 ## [0.3.1] - 2026-09-02
 
 ### Security

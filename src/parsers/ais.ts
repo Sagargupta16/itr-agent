@@ -1,3 +1,4 @@
+import { isUtf8 } from "node:buffer";
 import { createDecipheriv, pbkdf2Sync } from "node:crypto";
 
 /** AIS (Annual Information Statement) JSON parser.
@@ -98,22 +99,29 @@ export function decryptAis(
   for (const pw of passwords) {
     const key = pbkdf2Sync(pw, salt, 1000, 32, "sha256");
     for (const ct of ctCandidates) {
-      let plaintext: string;
+      let plainBytes: Buffer;
       try {
         const d = createDecipheriv("aes-256-cbc", key, iv);
-        plaintext = Buffer.concat([d.update(ct), d.final()]).toString("utf8");
+        plainBytes = Buffer.concat([d.update(ct), d.final()]);
       } catch {
         continue; // wrong key or wrong ciphertext encoding
       }
+      const plaintext = plainBytes.toString("utf8");
       try {
         return JSON.parse(plaintext) as unknown;
       } catch {
-        // AES-CBC accepts a wrong key whenever the trailing bytes happen to form
-        // valid PKCS#7 padding (~1 in 256, so ~3% across 8 attempts). Treating
-        // that as "the format changed" told users with a one-character DOB typo
-        // to file a bug report. Only a payload that actually starts like JSON is
-        // evidence of a format change; anything else is just a wrong key.
-        if (/^\s*[[{]/.test(plaintext)) decryptedButNotJson = true;
+        // AES-CBC accepts a wrong key whenever the trailing bytes happen to
+        // form valid PKCS#7 padding (~1 in 255 per candidate), and ~2 in 256
+        // of those garbage plaintexts still open with '{' or '[' -- so the
+        // first-character sniff alone misreported a wrong key as "the format
+        // changed" about once per 33k candidates, which a 400-DOB test sweep
+        // hit every ~20 runs. Uniform random bytes are almost surely not valid
+        // UTF-8, so demand a payload that decodes cleanly end to end AND
+        // starts like JSON before claiming the export format moved; anything
+        // else is just a wrong key.
+        if (/^\s*[[{]/.test(plaintext) && isUtf8(plainBytes)) {
+          decryptedButNotJson = true;
+        }
       }
     }
   }
