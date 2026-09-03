@@ -54,6 +54,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 - `pnpm-workspace.yaml` pins `postcss >=8.5.18` and `esbuild >=0.28.1` via overrides. Both are dev-only (neither ships in the package `files`), but the transitive resolutions carried GHSA-r28c-9q8g-f849 and GHSA-g7r4-m6w7-qqqr; `pnpm audit` is now clean
 - Test suite grown to 109 tests
 
+## [0.3.4] - 2026-09-03
+
+### Changed
+
+- Renovate now extends the shared Sagargupta16 preset: one grouped dependency PR in the first week of each month; security fixes bypass the schedule.
+
 ## [0.3.3] - 2026-09-03
 
 ### Security

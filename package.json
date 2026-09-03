@@ -1,6 +1,6 @@
 {
   "name": "itr-agent",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Local-first MCP filing agent for Indian income tax: pick your ITR form, compute tax, reconcile 26AS/AIS, and walk the filing checklist -- entirely on your machine",
   "keywords": [
     "mcp",
