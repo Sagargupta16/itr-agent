@@ -21,6 +21,11 @@ overrides:
   # GHSA-mwp4-54f8-5fhr (high), GHSA-4xrf-jv44-h6hh and GHSA-22jq-vg5j-6vgg.
   # Runtime, same reasoning as hono.
   ip-address: '>=10.3.1'
+  # express and body-parser (via the MCP SDK) resolve qs 6.15.3, which carries
+  # GHSA-4mjr-xmp4-gh2g (DoS via attacker-controlled isBuffer) and
+  # GHSA-x5fp-wj9c-mxmx (array-limit bypass via bracket-key comma parsing).
+  # Runtime, same reasoning as hono.
+  qs: '>=6.16.0'
   # postcss (via tsup and vite) resolves nanoid 3.3.11, which carries
   # GHSA-2v37-7h3g-55p8 (high). Dev-only, same reasoning as postcss. Capped below
   # 4 because nanoid 4+ is ESM-only and postcss requires it as CJS.
