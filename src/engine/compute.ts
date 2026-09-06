@@ -226,14 +226,21 @@ function preSurchargeTax(
 interface SurchargeBand {
   rate: number;
   threshold: number;
-  /** The band was tested on income EXCLUDING 111A/112A/dividend income. */
+  /** The band was tested on income EXCLUDING the 111A/112A gains this engine
+   * models. Dividend, which the statute also excludes, has no input here. */
   excludesSpecialRateIncome: boolean;
 }
 
 /** First Schedule Part I Paragraph A: the 25% and 37% bands look only at income
  * OTHER than 111A/112/112A/dividend income. A taxpayer past Rs 2 crore purely
  * on such income therefore stays in the 15% band, which is exactly what picking
- * the highest QUALIFYING band yields (the residual 15% clause). */
+ * the highest QUALIFYING band yields (the residual 15% clause).
+ *
+ * Scope limit: `IncomeMix` has no dividend head. Dividend reaches the engine as
+ * `otherIncome`, so it is tested in the enhanced bands and surcharged at the
+ * full band rate rather than being excluded and capped at 15% the way the
+ * statute provides. Only 111A/112A are excluded and capped here. Modelling
+ * dividend needs its own input, not a change to this function. */
 function pickSurchargeBand(
   mix: IncomeMix,
   pack: RulePack,
@@ -289,7 +296,8 @@ function surchargeOn(
   taxOnSpecialRate: number,
   pack: RulePack,
 ): number {
-  // 111A/112A gains (and dividends) carry a 15% surcharge cap.
+  // 111A/112A gains carry a 15% surcharge cap (the statute caps dividend too,
+  // but there is no dividend input -- see pickSurchargeBand).
   const gainsRate = Math.min(
     band.rate,
     pack.surcharge.capitalGainsAndDividendCap,

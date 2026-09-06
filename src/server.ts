@@ -527,9 +527,18 @@ export function createServer(): McpServer {
           .describe("PAN (used to derive the decryption password)"),
         dob: z
           .string()
+          // The password is derived from the digits with separators stripped, so
+          // an ISO date silently derives "19900115" instead of "15011990": all
+          // four candidates then fail and the decrypt error blames a rotated
+          // export format. Reject the wrong format here, where the message can
+          // name it.
+          .regex(
+            /^\d{2}[-/]?\d{2}[-/]?\d{4}$/,
+            "DOB must be DDMMYYYY or DD-MM-YYYY (not ISO YYYY-MM-DD)",
+          )
           .optional()
           .describe(
-            "Date of birth as DDMMYYYY (or DD-MM-YYYY); date of incorporation for non-individuals",
+            "Date of birth as DDMMYYYY (or DD-MM-YYYY); date of incorporation for non-individuals. NOT ISO YYYY-MM-DD.",
           ),
         password: z
           .string()
@@ -1019,15 +1028,16 @@ export function createServer(): McpServer {
             text: [
               "Act as my ITR filing agent for India. Interview me ONE question at a time -- never a wall of questions -- and drive the itr-agent tools after each answer. Sequence:",
               "",
-              "1. Residency and age band for the FY.",
-              "2. Income heads, one by one: salary (how many employers), house property (how many), capital gains (equity 111A/112A, anything else), business/professional incl. F&O or freelancing, other sources (interest, dividend).",
-              "3. Disqualifier sweep: foreign assets or RSUs/ESPP of a foreign employer, director role, unlisted shares, agricultural income over 5,000, ESOP deferral, lottery/gaming winnings.",
-              "4. Losses: brought-forward or current-year business/speculative/capital/house-property losses (this changes the form).",
-              "5. Call recommend_itr_form with everything gathered; explain the recommendation and what ruled out simpler forms.",
-              "6. Ask for real amounts, then call compare_regimes (and compute_hra / list_deductions when the old regime is in play). Recommend the regime.",
-              "7. If documents are available, parse them (parse_form26as, parse_ais) and run reconcile_documents; walk me through fixing every finding.",
-              "8. If advance tax applies, call schedule_advance_tax and compute_interest_234.",
-              "9. Finish with filing_checklist for the recommended form and walk me through it step by step, waiting for my confirmation at each portal step.",
+              "1. Timing, before anything else: call list_tax_years and check the current date against `deadlines`. If the due date for the FY has already passed, say plainly that this will be a BELATED return under s.139(4) (last date in `deadlines.belated`), quote the s.234F late fee from the tool output rather than from memory, and flag both consequences up front: s.234A interest runs on the tax still outstanding from the day after the due date, and s.80 forfeits the carry-forward of the current year's business, speculative and capital losses (a house-property loss survives, s.71B). Return to compute_interest_234 with monthsLateFiling once the tax figures exist.",
+              "2. Residency and age band for the FY.",
+              "3. Income heads, one by one: salary (how many employers), house property (how many), capital gains (equity 111A/112A, anything else), business/professional incl. F&O or freelancing, other sources (interest, dividend).",
+              "4. Disqualifier sweep: foreign assets or RSUs/ESPP of a foreign employer, director role, unlisted shares, agricultural income over 5,000, ESOP deferral, lottery/gaming winnings.",
+              "5. Losses: brought-forward or current-year business/speculative/capital/house-property losses (this changes the form, and step 1 decides whether the current year's losses can still be carried forward).",
+              "6. Call recommend_itr_form with everything gathered; explain the recommendation and what ruled out simpler forms.",
+              "7. Ask for real amounts, then call compare_regimes (and compute_hra / list_deductions when the old regime is in play). Recommend the regime.",
+              "8. If documents are available, parse them (parse_form26as, parse_ais) and run reconcile_documents; walk me through fixing every finding.",
+              "9. Interest and advance tax: call compute_interest_234 for s.234A (with monthsLateFiling when step 1 established the return is late), s.234B and s.234C, and schedule_advance_tax when advance tax applies.",
+              "10. Finish with filing_checklist for the recommended form and walk me through it step by step, waiting for my confirmation at each portal step.",
               "",
               "Rules: use tool outputs for every number (never estimate tax yourself), quote the disclaimers, and be explicit that I press the final submit button on incometax.gov.in myself -- you never file on my behalf.",
             ].join("\n"),

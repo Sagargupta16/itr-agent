@@ -314,6 +314,26 @@ describe("itr-agent server", () => {
     }
   });
 
+  // An ISO date strips to "19900115", which derives four wrong passwords and
+  // surfaces as "the export format has changed" -- a scheme-rotation report for
+  // what is really a format slip. Reject it where the message can name the fix.
+  it("parse_ais rejects an ISO date of birth at the tool boundary", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "itr-ais-iso-"));
+    const file = join(dir, "AIS.json");
+    await writeFile(file, "0".repeat(64), "utf8");
+    try {
+      const client = await connectedClient();
+      const result = await client.callTool({
+        name: "parse_ais",
+        arguments: { path: file, pan: "ABCDE1234F", dob: "1990-01-15" },
+      });
+      expect(result.isError).toBe(true);
+      expect(JSON.stringify(result.content)).toContain("DDMMYYYY");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it("list_deductions and schedule_advance_tax round trip", async () => {
     const client = await connectedClient();
 

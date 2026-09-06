@@ -38,7 +38,6 @@ export interface InterestConfig {
   s234A: { ratePerMonth: number; fromDate: string };
   s234B: { trigger: string; fromDate: string };
   s234C: Interest234CConfig;
-  seniorNoPgbpExempt: boolean;
 }
 
 export interface HraConfig {
@@ -81,10 +80,8 @@ export interface RulePack {
     slabs: Slab[];
     /** Senior (60-79): the higher basic exemption WIDENS the nil band. */
     slabsSenior: Slab[];
-    /** Super senior (80+): nil band up to superSeniorExemption. */
+    /** Super senior (80+): the nil band widens again. */
     slabsSuperSenior: Slab[];
-    seniorExemption: number;
-    superSeniorExemption: number;
     standardDeduction: number;
     rebate87A: Rebate87A;
     deductionCaps: Record<string, number>;

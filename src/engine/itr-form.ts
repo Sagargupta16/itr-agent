@@ -232,6 +232,23 @@ export function recommendItrForm(
       ? pack.deadlines.itr1_2
       : pack.deadlines.itr3_4_nonAudit) ?? "";
 
+  // s.80: only a return furnished within the s.139(1) due date carries THIS
+  // year's losses forward. The form recommendation is unaffected -- Schedule
+  // CFL/BFLA is still what sets off losses already determined in an earlier
+  // year -- but without this note the ITR-3 reason string ("keeps the
+  // carry-forward alive") reads as unconditional, and filing_checklist's own
+  // "belated returns lose most loss carry-forwards" note then contradicts it.
+  const anyLoss =
+    input.losses.business ||
+    input.losses.speculative ||
+    input.losses.capital ||
+    input.losses.houseProperty;
+  if (anyLoss) {
+    notes.push(
+      `Loss carry-forward is date-sensitive (s.80): file by ${nonAuditDue} to carry THIS year's business, speculative and capital losses forward. A belated return under s.139(4) still sets off brought-forward losses already determined in an earlier year, and still carries a house-property loss forward (s.71B), but the current year's other losses are forfeited. Confirm the due date for your form on the portal -- the department has extended it by circular in past years.`,
+    );
+  }
+
   return {
     fy: pack.fy,
     ay: pack.ay,

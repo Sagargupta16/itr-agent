@@ -699,6 +699,48 @@ describe("reconcile", () => {
     expect(m1[0]?.figures?.delta).toBe(25000);
   });
 
+  // 26AS carries paise, which is exactly why the pack ships a Rs 10 pass
+  // tolerance. M1 used to compare exactly and reported that slack as a finding.
+  it("M1: a difference inside the Rs 10 tolerance is not a finding", () => {
+    const r = reconcile(
+      {
+        form26asTds: [
+          {
+            tan: "AAAA11111A",
+            section: "192",
+            amountPaid: 1200000,
+            tdsDeposited: 89997,
+          },
+        ],
+        form16: [{ tan: "AAAA11111A", tdsDeposited: 90000 }],
+      },
+      pack,
+    );
+    expect(r.checksRun).toContain("M1");
+    expect(r.findings.filter((f) => f.id === "M1").length).toBe(0);
+  });
+
+  it("M1: a difference past the tolerance is still reported", () => {
+    const r = reconcile(
+      {
+        form26asTds: [
+          {
+            tan: "AAAA11111A",
+            section: "192",
+            amountPaid: 1200000,
+            tdsDeposited: 89500,
+          },
+        ],
+        form16: [{ tan: "AAAA11111A", tdsDeposited: 90000 }],
+      },
+      pack,
+    );
+    const m1 = r.findings.filter((f) => f.id === "M1");
+    expect(m1.length).toBe(1);
+    expect(m1[0]?.severity).toBe("medium");
+    expect(m1[0]?.figures?.delta).toBe(500);
+  });
+
   it("M5: 26AS rows with TDS but no gross amount", () => {
     const r = reconcile(
       {

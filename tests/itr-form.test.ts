@@ -129,6 +129,26 @@ describe("recommendItrForm", () => {
     expect(r.recommended).toBe("ITR-2");
   });
 
+  // s.80: the ITR-3 "keeps the carry-forward alive" reason is only true for a
+  // return filed by the due date, and filingChecklist says so separately -- the
+  // two tools must not contradict each other.
+  it("any loss flag adds the s.80 date-sensitivity note", () => {
+    const r = recommendItrForm(
+      { ...base, losses: { ...noLosses, business: true } },
+      pack,
+    );
+    const note = r.notes.find((x) => x.includes("s.80"));
+    expect(note).toBeDefined();
+    expect(note).toContain(r.dueDate);
+    expect(note).toContain("s.139(4)");
+    expect(note).toContain("s.71B");
+  });
+
+  it("no loss flag means no s.80 note", () => {
+    const r = recommendItrForm(base, pack);
+    expect(r.notes.some((x) => x.includes("s.80"))).toBe(false);
+  });
+
   it("director flag bumps to ITR-2", () => {
     const r = recommendItrForm({ ...base, isDirector: true }, pack);
     expect(r.recommended).toBe("ITR-2");
