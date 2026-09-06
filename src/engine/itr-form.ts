@@ -232,6 +232,31 @@ export function recommendItrForm(
       ? pack.deadlines.itr1_2
       : pack.deadlines.itr3_4_nonAudit) ?? "";
 
+  // s.80: only a return furnished within the s.139(1) due date carries THIS
+  // year's losses forward. The form recommendation is unaffected -- Schedule
+  // CFL/BFLA is still what sets off losses already determined in an earlier
+  // year -- but without this note the ITR-3 reason string ("keeps the
+  // carry-forward alive") reads as unconditional, and filing_checklist's own
+  // "belated returns lose most loss carry-forwards" note then contradicts it.
+  // houseProperty is deliberately NOT in this set: s.71B carries a
+  // house-property loss forward from a belated return too, so a filer whose
+  // only loss is house property has nothing at stake here and must not be
+  // handed a deadline warning about losses they do not have.
+  const anyForfeitableLoss =
+    input.losses.business || input.losses.speculative || input.losses.capital;
+  if (anyForfeitableLoss) {
+    notes.push(
+      "Loss carry-forward is date-sensitive (s.80): only a return furnished by the s.139(1) due date carries THIS year's business, speculative and capital losses forward. A belated return under s.139(4) still sets off brought-forward losses already determined in an earlier year, and still carries a house-property loss forward (s.71B), but the current year's other losses are forfeited. Confirm the due date that applies to you on the portal before relying on the reported one.",
+    );
+  }
+
+  // `dueDate` is always a non-audit date: this function takes no audit/44AB
+  // input, so it cannot select `deadlines.audit`. Say so on every response,
+  // exactly as filingChecklist does, rather than only when a loss note fires.
+  notes.push(
+    "Deadlines are the non-audit dates from the rule pack; audit cases differ.",
+  );
+
   return {
     fy: pack.fy,
     ay: pack.ay,

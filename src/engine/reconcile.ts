@@ -239,7 +239,7 @@ export function reconcile(
     });
   }
 
-  // M1: Form 16 Part A deposited vs 26AS per TAN (exact)
+  // M1: Form 16 Part A deposited vs 26AS per TAN (Rs 10 statutory slack)
   if (input.form16 && tds26.length > 0) {
     checksRun.push("M1");
     // Index once instead of re-filtering per Form 16: the LLM composes both
@@ -268,7 +268,9 @@ export function reconcile(
         continue;
       }
       const delta = f16.tdsDeposited - from26;
-      if (delta !== 0) {
+      // Same Rs 10 pass tolerance as H4/H5/M3: 26AS carries paise, so an exact
+      // comparison surfaced statutory rounding slack as a finding.
+      if (tier(delta, pack) !== "pass") {
         findings.push({
           id: "M1",
           severity: severityFor(tier(delta, pack)),

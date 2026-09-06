@@ -129,6 +129,64 @@ describe("recommendItrForm", () => {
     expect(r.recommended).toBe("ITR-2");
   });
 
+  // s.80: the ITR-3 "keeps the carry-forward alive" reason is only true for a
+  // return filed by the due date, and filingChecklist says so separately -- the
+  // two tools must not contradict each other.
+  it.each([
+    ["business", { ...noLosses, business: true }],
+    ["speculative", { ...noLosses, speculative: true }],
+    ["capital", { ...noLosses, capital: true }],
+  ])("a %s loss adds the s.80 date-sensitivity note", (_label, losses) => {
+    const r = recommendItrForm({ ...base, losses }, pack);
+    const note = r.notes.find((x) => x.includes("s.80"));
+    expect(note).toBeDefined();
+    expect(note).toContain("s.139(4)");
+    expect(note).toContain("s.71B");
+  });
+
+  // The note names business, speculative and capital losses as the ones s.80
+  // forfeits, and in the same breath says a house-property loss survives under
+  // s.71B. Firing it for a house-property-only filer would warn them about a
+  // deadline for losses they do not have.
+  it("a house-property-only loss does not add the s.80 note", () => {
+    const r = recommendItrForm(
+      { ...base, losses: { ...noLosses, houseProperty: true } },
+      pack,
+    );
+    expect(r.notes.some((x) => x.includes("s.80"))).toBe(false);
+  });
+
+  // The due date is the pack's non-audit value and recommendItrForm takes no
+  // audit/44AB input, so the note must not assert it as the filer's deadline.
+  it("the s.80 note does not assert a calendar due date", () => {
+    const r = recommendItrForm(
+      { ...base, losses: { ...noLosses, business: true } },
+      pack,
+    );
+    const note = r.notes.find((x) => x.includes("s.80"));
+    expect(note).toBeDefined();
+    expect(note).not.toContain(r.dueDate);
+    expect(note).not.toMatch(/\d{4}-\d{2}-\d{2}/);
+  });
+
+  // dueDate can only ever be a non-audit date here, so the caveat rides on
+  // every response and not just the ones that happen to carry a loss note.
+  it.each([
+    ["no losses", noLosses],
+    ["a business loss", { ...noLosses, business: true }],
+    ["a house-property loss", { ...noLosses, houseProperty: true }],
+  ])("flags dueDate as the non-audit date with %s", (_label, losses) => {
+    const r = recommendItrForm({ ...base, losses }, pack);
+    expect(r.notes).toContain(
+      "Deadlines are the non-audit dates from the rule pack; audit cases differ.",
+    );
+  });
+
+  it("no loss flag means no s.80 note", () => {
+    const r = recommendItrForm(base, pack);
+    expect(r.notes.some((x) => x.includes("s.80"))).toBe(false);
+  });
+
   it("director flag bumps to ITR-2", () => {
     const r = recommendItrForm({ ...base, isDirector: true }, pack);
     expect(r.recommended).toBe("ITR-2");

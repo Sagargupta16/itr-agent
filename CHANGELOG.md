@@ -5,6 +5,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-06
+
+0.3.1 through 0.3.4 were committed but never tagged, released, or published: npm stopped at 0.3.0, and `publish.yml` fires on `release: published`, so it never ran. Their entries are folded in here rather than left standing as versions nobody can install. Everything below therefore reaches users for the first time in 0.4.0.
+
+Minor, not patch: `compute80GG` takes an options object instead of positional numbers (breaking for direct importers of the engine), and computed output changes for senior/super-senior returns and for surcharge marginal relief past a band edge.
+
 ### Fixed
 
 - **Senior / super-senior basic exemption is a slab set, not an income deduction.** The old regime previously subtracted Rs 3,00,000 (senior) or Rs 5,00,000 (super senior) from taxable income before applying the below-60 slabs, which under-taxed every senior return by a whole slab and mis-stated total income on the face of the computation. The engine now selects `oldRegime.slabsSenior` / `slabsSuperSenior` from the rule pack, so income is reported unchanged and only the nil band widens. Source: Finance Act 2025 First Schedule Part I Paragraph A sub-paragraphs (ii) and (iii)
@@ -24,6 +30,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 - Document paths are stat-checked before reading: a directory and an oversized file each get their own message instead of the generic "could not read file", and a multi-gigabyte file no longer surfaces as a bare V8 "Invalid string length"
 - The `parse_ais` PAN mask is case-insensitive. The parser preserves whatever case the source file carries, so a lowercase PAN in a remark or deductor name passed through the text mirror unmasked
 - Two quadratic paths that a mis-scaled tool call could reach: the AIS column reader iterated the label list per row (a crafted 3.5 MB file blocked the single-threaded stdio server for ~97s; now ~10ms), and reconcile check M1 re-filtered the whole 26AS list per Form 16 entry (now indexed by TAN once). `reconcile_documents` also bounds its arrays at 2,000 TDS rows and 50 Form 16s
+- AIS decrypt could still misreport a wrong password as "the export format has changed": the format-change classifier only sniffed the first character of the decrypted payload, and a wrong AES-CBC key that survives the PKCS#7 padding check produces garbage whose first byte is `{` or `[` some of the time, which is enough to flake the DOB regression sweep. Claiming a format change now also requires the entire payload to decode as valid UTF-8 (`node:buffer` `isUtf8`), which uniform random bytes essentially never satisfy; a genuinely rotated but textual export still classifies as a format change, and the success path is untouched
+- Reconcile check M1 compared Form 16 TDS against 26AS exactly while H4, H5 and M3 all honoured the rule pack's Rs 10 pass tolerance. That tolerance exists because 26AS carries paise, so a Rs 3 difference on the same TAN surfaced as a finding the report's own disclaimer calls statutory rounding slack. M1 now gates on the same tier; the "TAN absent from 26AS entirely" branch above it stays an unconditional HIGH
+- `parse_ais` rejects an ISO date of birth at the tool boundary. The password is derived from the DOB digits with separators stripped, so `1990-01-15` derived `19900115` instead of `15011990`, all four candidates failed, and the final error told the user the password scheme had rotated -- a format slip reported as a scheme rotation, on the one decrypt path README already flags as unproven against a live export
+- `recommend_itr_form` reports that loss carry-forward is date-sensitive (s.80) whenever a business, speculative or capital loss flag is set. Its ITR-3 reason ("only ITR-3's Schedule CFL keeps the carry-forward alive") read as unconditional, while `filing_checklist` separately noted that belated returns lose most carry-forwards: the two tools contradicted each other for the same filer. The note keeps the brought-forward set-off and the s.71B house-property carry-forward, and says the current year's other losses are forfeited. It does NOT fire for a house-property-only loss (s.71B carries that forward from a belated return too) and does not restate a calendar date, because `recommendItrForm` takes no audit/44AB input and its `dueDate` is always the pack's non-audit value
+- The `file_my_itr` interview asks about timing first. It went straight from losses to form to regime, and only reached `compute_interest_234` "if advance tax applies" -- so a filer past the s.139(1) date was never told they were filing belated under s.139(4), owed the s.234F fee, and were accruing s.234A interest. Step 1 now establishes the date against the rule pack's `deadlines` and quotes the fee from the tool output rather than from the model
 
 ### Added
 
@@ -38,6 +49,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 - Server tests now call all twelve tools through an in-memory MCP client, including the PAN contract on both parsers (masked in the text mirror, real in `structuredContent`), the rupee ceiling, the directory/oversize read branches, and the AIS decrypt round trip
 - `src/**/*.js` and `src/**/*.d.ts` are gitignored: `tsc -p tsconfig.test.json` widens `rootDir` to the repo root and emits next to the sources, after which `pnpm lint` fails on 22 generated files
 - Tests for s.234A (both published goldens, the nil-when-on-time and nil-when-nothing-outstanding branches, and the Rule 119A(c) principal floor) and for the s.234B(2) payment ladder (segment split, per-segment flooring, unordered payments)
+- `server.json`, the official MCP registry manifest (schema `2025-12-11`), plus a registry-publish step in `publish.yml`. `package.json` has carried `mcpName` since the rename -- a field that exists only for the registry's npm-ownership check -- while the server itself was not listed: a live query of registry.modelcontextprotocol.io returned zero results for both `itr-agent` and `sagargupta`. The `mcp-publisher` download is pinned to a version, not `releases/latest`, and its tarball is checked against the release's `registry_<version>_checksums.txt` before unpacking. Both registry steps are `continue-on-error` because they run after the irreversible `npm publish`: a preview-registry rejection must not mark a correctly published release red
+- Tests for the M1 tolerance on both sides of the Rs 10 tier, the ISO-DOB rejection, and the s.80 note: one case per forfeitable loss type, the house-property-only case that must NOT raise it, the no-loss case, and an assertion that the note quotes no calendar date
 
 ### Changed
 
@@ -53,29 +66,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 - `biome.json` migrated to the 2.5.x schema (`biome migrate`); dependencies moved to their latest stable releases (MCP SDK 1.30.0, TypeScript 7.0.2, Biome 2.5.6, Vitest 4.1.10, @types/node 26.1.2) and CI to `pnpm/action-setup@v6` + `actions/setup-node@v7`
 - `pnpm-workspace.yaml` pins `postcss >=8.5.18` and `esbuild >=0.28.1` via overrides. Both are dev-only (neither ships in the package `files`), but the transitive resolutions carried GHSA-r28c-9q8g-f849 and GHSA-g7r4-m6w7-qqqr; `pnpm audit` is now clean
 - Test suite grown to 109 tests
-
-## [0.3.4] - 2026-09-03
-
-### Changed
-
 - Renovate now extends the shared Sagargupta16 preset: one grouped dependency PR in the first week of each month; security fixes bypass the schedule.
-
-## [0.3.3] - 2026-09-03
+- Rule pack 1.3.0: `oldRegime.seniorExemption`, `oldRegime.superSeniorExemption` and `interest.seniorNoPgbpExempt` removed from the pack and from the `RulePack` interface. Nothing in `src/` read any of them, and the first two encoded exactly the "subtract the higher exemption from income" semantics this release reverts, so a new FY pack was obliged to copy the old bug forward. The senior slab sets already carry that information. No computed figure changes
+- `pickSurchargeBand` and `surchargeOn` no longer read as though dividend income were excluded from the enhanced surcharge bands and capped at 15%. The statute does both; this engine has no dividend input, so dividend arrives as `otherIncome` and is surcharged as normal income. The comments say so, and README's limitations list carries the bullet
+- Dependencies moved to their latest stable minors/patches: Biome 2.5.12, @types/node 26.4.1, zod 4.5.4, Vitest 4.1.11. Vitest 5.0.0 is available and left for its own PR. `minimumReleaseAgeExclude` is refreshed to the newly resolved versions (and now covers zod and the `vitest` / `@vitest/*` set) instead of being dropped: an entry only matches the exact version it names, so a stale list and no list block a fresh install identically. The block carries a comment saying to refresh it on every bump
+- README links CONTRIBUTING.md, SECURITY.md and CHANGELOG.md, references `docs/v0.2-spec.md` from the limitations section, and documents filing after the due date (s.139(4), s.234F, s.234A, the s.80 carry-forward loss)
+- Test suite grown to 121 tests
 
 ### Security
 
 - `pnpm-workspace.yaml` pins `qs >=6.16.0` (resolves 6.16.0), a runtime transitive of the MCP SDK via express and body-parser, past GHSA-4mjr-xmp4-gh2g (Denial of Service via attacker-controlled isBuffer) and GHSA-x5fp-wj9c-mxmx (array-limit bypass via bracket-key comma parsing), both medium. `pnpm audit` stays clean
-
-## [0.3.2] - 2026-09-03
-
-### Fixed
-
-- AIS decrypt could still misreport a wrong password as "the export format has changed": the format-change classifier only sniffed the first character of the decrypted payload, and a wrong AES-CBC key that survives the PKCS#7 padding check (~1 in 255) produces garbage that opens with `{` or `[` about 2 in 256 times. Measured over 10^6 wrong keys: 3,844 padding survivors, 23 of them bracket-first -- enough to flake the 400-DOB regression sweep in ~3.6% of runs (and one CI matrix job in ~5). Claiming a format change now also requires the entire payload to decode as valid UTF-8 (`node:buffer` `isUtf8`), which uniform random bytes essentially never satisfy (0 of the same 10^6); a genuinely rotated but textual export still classifies as a format change, and the success path is untouched
-
-## [0.3.1] - 2026-09-02
-
-### Security
-
 - `pnpm-workspace.yaml` pins three runtime transitives of the MCP SDK past their Dependabot alerts: `hono >=4.12.34` (resolves 4.13.5; GHSA-f23p-vx2j-j53r, GHSA-54fx-42gc-7vw4, GHSA-8j4g-w8fx-2239, GHSA-79qm-7rj5-m7r9), `fast-uri >=3.1.5 <4` (resolves 3.1.6, capped inside ajv's declared ^3 range; GHSA-7p8r-x3mc-p8w7, high), and `ip-address >=10.3.1` (resolves 10.7.0; GHSA-mwp4-54f8-5fhr high, GHSA-4xrf-jv44-h6hh, GHSA-22jq-vg5j-6vgg)
 - `nanoid >=3.3.18 <4` pinned alongside them (dev-only, via postcss; GHSA-2v37-7h3g-55p8, high) -- capped below 4 because nanoid 4+ is ESM-only and postcss requires it as CJS. `pnpm audit` is clean again
 

@@ -1,7 +1,7 @@
 {
   "fy": "2025-26",
   "ay": "2026-27",
-  "rulePackVersion": "1.2.0",
+  "rulePackVersion": "1.3.0",
   "sources": [
     "https://www.incometax.gov.in/iec/foportal/help/individual/return-applicable-1",
     "Finance Act 2025 (new regime slabs, 87A rebate, standard deduction)",
@@ -102,8 +102,6 @@
         "rate": 0.3
       }
     ],
-    "seniorExemption": 300000,
-    "superSeniorExemption": 500000,
     "standardDeduction": 50000,
     "rebate87A": {
       "incomeThreshold": 500000,
@@ -258,8 +256,7 @@
         "months": 1
       },
       "minLiability": 10000
-    },
-    "seniorNoPgbpExempt": true
+    }
   },
   "hra": {
     "metroCities": [
