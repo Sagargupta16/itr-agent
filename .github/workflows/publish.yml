@@ -101,11 +101,43 @@ jobs:
       # ownership via the same GitHub OIDC token, and package ownership by
       # reading `mcpName` out of the PUBLISHED npm tarball -- so this has to run
       # after `npm publish`, not before.
+      #
+      # Both steps are continue-on-error BECAUSE they run after `npm publish`,
+      # which cannot be undone. If the preview registry rejects the listing the
+      # release is still correct on npm and the two commands can be re-run by
+      # hand; failing the workflow here would only mark a good release red.
+      # GitHub still surfaces the failure as a step annotation.
       - name: Install mcp-publisher
+        continue-on-error: true
+        env:
+          # Pinned deliberately. `releases/latest` fetches a different binary on
+          # every release with nothing asserting what it is, inside the same job
+          # whose other half exists to enforce npm provenance.
+          MCP_PUBLISHER_VERSION: 1.8.1
         run: |
-          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+          set -euo pipefail
+          os=$(uname -s | tr '[:upper:]' '[:lower:]')
+          arch=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
+          asset="mcp-publisher_${os}_${arch}.tar.gz"
+          base="https://github.com/modelcontextprotocol/registry/releases/download/v${MCP_PUBLISHER_VERSION}"
+          curl -fsSL -o "$asset" "${base}/${asset}"
+          # The release signs one checksums file covering every asset; verify the
+          # tarball against it before unpacking anything.
+          curl -fsSL -o checksums.txt "${base}/registry_${MCP_PUBLISHER_VERSION}_checksums.txt"
+          grep " ${asset}\$" checksums.txt > expected.sha256
+          test -s expected.sha256
+          sha256sum -c expected.sha256
+          tar xzf "$asset" mcp-publisher
+          chmod +x mcp-publisher
+          rm -f "$asset" checksums.txt expected.sha256
 
       - name: Publish to the MCP registry
+        continue-on-error: true
         run: |
+          set -euo pipefail
+          if [ ! -f ./mcp-publisher ]; then
+            echo "mcp-publisher is not present (its install step failed); skipping the registry listing" >&2
+            exit 1
+          fi
           ./mcp-publisher login github-oidc
           ./mcp-publisher publish
