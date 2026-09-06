@@ -32,7 +32,7 @@ pnpm inspect              # MCP inspector UI
 ## Test
 
 ```
-pnpm test         # engine golden cases + in-memory MCP client round trips (114 tests)
+pnpm test         # engine golden cases + in-memory MCP client round trips (121 tests)
 pnpm lint         # biome
 pnpm typecheck    # two configs: tsconfig.json (src) + tsconfig.test.json (src + tests)
 ```

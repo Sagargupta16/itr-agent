@@ -104,12 +104,14 @@ Same server, new name. Replace `itr-mcp` with `itr-agent` in your MCP config; th
 
 The s.139(1) due date for FY 2025-26 is in `deadlines` (`list_tax_years` prints them). Once it has passed, the return is **belated under s.139(4)** and four things change. `file_my_itr` now asks about timing before anything else, because two of them are cheaper to know up front.
 
-- **You can still file**, up to `deadlines.belated` (2026-12-31 for AY 2026-27) or before the assessment is completed, whichever is earlier. A revised return remains open until `deadlines.revised`.
+Check the date yourself before acting on it. The pack's `deadlines.itr1_2` is 2026-07-31; `deadlines.itr3_4_nonAudit` is 2026-08-31 and is **not** cited to a section, circular or notification. Audit cases are later again (`deadlines.audit`), and no tool ever selects it because nothing here takes a 44AB input, so `recommend_itr_form` and `filing_checklist` both report the non-audit date and both say so in `notes`.
+
+- **You can still file**, up to `deadlines.belated` (2026-12-31 for AY 2026-27) or before the assessment is completed, whichever is earlier.
 - **s.234F fee**: Rs 5,000, or Rs 1,000 where total income does not exceed Rs 5 lakh. Both figures come from the rule pack (`lateFee234F`) and are returned by `recommend_itr_form` and `filing_checklist`.
 - **s.234A interest**: 1% per month, or part of a month, on the tax still outstanding after TDS/TCS, advance tax and reliefs, running from the day after the due date to the date of filing. Call `compute_interest_234` with `monthsLateFiling` (part month = full month, Rule 119A).
-- **s.80 forfeits this year's loss carry-forward.** Business, speculative and capital losses of the current year cannot be carried forward in a belated return. Set-off of losses already determined in an earlier year survives, and so does the house-property loss carry-forward (s.71B). `recommend_itr_form` says this in `notes` whenever a loss flag is set, so its ITR-3 recommendation is not read as an unconditional carry-forward.
+- **s.80 forfeits this year's loss carry-forward.** Business, speculative and capital losses of the current year cannot be carried forward in a belated return. Set-off of losses already determined in an earlier year survives, and so does the house-property loss carry-forward (s.71B). `recommend_itr_form` says this in `notes` whenever a business, speculative or capital loss flag is set, so its ITR-3 recommendation is not read as an unconditional carry-forward. A house-property-only loss does not trigger it, because s.71B carries that one forward either way.
 
-Not modeled, deliberately: whether a belated business filer keeps the old-regime election (s.115BAC(6) / Form 10-IEA is due on or before the s.139(1) date). Read that one off the portal or ask a CA before relying on either answer.
+Not modeled, deliberately: the s.139(5) revised-return time limit, and whether a belated business filer keeps the old-regime election (s.115BAC(6) / Form 10-IEA is due on or before the s.139(1) date). The rule pack carries a `deadlines.revised` field, but no tool reads it and this README does not quote it: 2027-03-31 sits three months later than the same pack's `deadlines.belated`, and the pack's cited source page gives no calendar date for either. Read those off the portal or ask a CA before relying on either answer.
 
 ## Scope and limitations
 
@@ -129,7 +131,7 @@ Honest boundaries, so you know before you rely on it. [`docs/v0.2-spec.md`](docs
 
 - **Local-only.** stdio transport, no network calls, no telemetry, no accounts. Your documents are read from disk by this process and never uploaded anywhere. AIS decryption happens entirely on-device with Node's crypto -- the reverse-engineered password scheme has un-peppered fallbacks and an explicit `password` override in case the format rotates.
 - **What your MCP client still sees.** Parsed output is returned to whatever client you connected, so if that client is a hosted LLM, the parsed contents reach that provider like any other message. PAN is masked in the human-readable text mirror, but the `structuredContent` payload carries the full parsed document (PAN, TANs, deductor names, amounts) because downstream tools need it. Local-only describes this server, not your whole stack -- for maximum privacy, run it against a local model.
-- **The LLM never does math.** Every rupee is computed by pure functions over `data/fy2025-26.json`. 114 tests pin the engine to published worked examples and to statute: the 12L zero-tax case, the 12,10,000 marginal-relief case, the 12,70,588 relief exhaustion point on both sides, the surcharge bands with the First Schedule exclusion of capital-gains income, all three old-regime age bands, and the 234A/234B/234C/HRA/80GG golden cases.
+- **The LLM never does math.** Every rupee is computed by pure functions over `data/fy2025-26.json`. 121 tests pin the engine to published worked examples and to statute: the 12L zero-tax case, the 12,10,000 marginal-relief case, the 12,70,588 relief exhaustion point on both sides, the surcharge bands with the First Schedule exclusion of capital-gains income, all three old-regime age bands, and the 234A/234B/234C/HRA/80GG golden cases.
 - **The agent drives, the engine decides.** The interview sequencing is a prompt; every number and every form rule is deterministic code. Nothing is estimated.
 - **Year-parameterized.** Rules live in per-FY JSON packs. FY 2026-27 (Budget 2026: Form 16 renamed to Form 130, 8 HRA metros, buyback reversion) lands as a new pack, not code changes.
 - **Not tax advice.** Every tool that computes a rupee figure returns a `disclaimers` array and the fiscal year it applied; `compute_tax`, `compute_hra` and `list_tax_years` also return the exact `rulePackVersion`. Verify against the official utility before filing.
@@ -155,14 +157,6 @@ pnpm inspect       # MCP inspector against dist/index.js
 ## Contributing
 
 Tax software has a higher correctness bar than most OSS, so the ground rules are written down: [CONTRIBUTING.md](CONTRIBUTING.md) (tax constants live in `data/*.json` with a cited source, every calculator change ships a golden test, never commit a real tax document). Version history and every constant that moved: [CHANGELOG.md](CHANGELOG.md). Found a vulnerability? [SECURITY.md](SECURITY.md) has the private reporting path -- please do not open a public issue for it.
-
-## More AI Developer Tools
-
-| Project | What it does |
-| --- | --- |
-| [mcp-toolkit](https://github.com/Sagargupta16/mcp-toolkit) | TypeScript middleware toolkit for MCP servers: authentication, caching, rate limiting, CORS, logging (beta) |
-| [ai-git-hooks](https://github.com/Sagargupta16/ai-git-hooks) | AI-powered git hooks: auto-review diffs, generate commit messages, scan for secrets. Claude, OpenAI, and Ollama |
-| [claude-cost-optimizer](https://github.com/Sagargupta16/claude-cost-optimizer) | Strategies, benchmarks, and copy-paste configs for cutting Claude Code costs |
 
 ## Disclaimer
 
