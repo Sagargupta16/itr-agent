@@ -44,6 +44,7 @@ Minor, not patch: computed output changes for anyone with 111A/112A gains under 
 
 - README: the "Filing after the due date" section no longer hedges on the 31 August and 31 March dates. Both are Finance Act 2026 (s.139(1) for non-audit assessees with business/professional income; substituted s.139(5) to the end of the AY, subject to s.234I). CBDT granted no AY 2026-27 extension. The 26AS text export is described as DOB-protected rather than password-free; the Form 130 / 8-metro attribution reads Income-tax Act 2025 and Income-tax Rules 2026 rather than Budget 2026 (only the buyback reversion is Finance Act 2026)
 - Roadmap: this release is v0.5; the loss set-off engine, Form 16 PDF and broker parsers move to v0.6, Schedule FA and the rest to v0.7
+- `vitest.config.ts` raises the per-test timeout from 5s to 30s. GitHub's Windows runners stall for seconds at a time and the default failed three trivial synchronous tests on one matrix cell (windows-latest, Node 24) while the other seven cells passed. The one timing-sensitive test asserts its own elapsed time inline, so it is unaffected
 
 ### Verified, unchanged
 
