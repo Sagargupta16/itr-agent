@@ -33,6 +33,18 @@ export interface ItrFormInput {
   hasBusinessIncome: boolean;
   /** Opting for presumptive taxation (44AD trade / 44ADA profession / 44AE transport). */
   presumptive: boolean;
+  /** Which presumptive section. Drives the turnover/receipts ceiling check. */
+  presumptiveScheme?: "44AD" | "44ADA" | "44AE";
+  /** 44AD turnover or 44ADA gross receipts for the year, INR. Above the
+   * section's ceiling the scheme is unavailable, books/audit follow, and the
+   * form is ITR-3. Omit to skip the check (the result then says so). */
+  presumptiveTurnover?: number;
+  /** 44AD only: cash receipts are at most 5% of turnover, which lifts the
+   * ceiling from Rs 2 crore to Rs 3 crore. */
+  cashReceiptsWithin5Pct?: boolean;
+  /** Business or professional income that is NOT under the presumptive scheme
+   * alongside presumptive income. ITR-4 cannot carry both; ITR-3 can. */
+  hasNonPresumptiveBusiness?: boolean;
   /** Partner in a partnership firm (remuneration/interest/share). */
   isPartnerInFirm: boolean;
   losses: LossFlags;
@@ -48,6 +60,8 @@ export interface ItrFormInput {
   esopDeferral: boolean;
   /** Winnings from lottery / online games / racehorses. */
   hasLotteryOrGamingIncome: boolean;
+  /** TDS was deducted under s.194N (cash withdrawals). Bars ITR-1. */
+  tds194N?: boolean;
 }
 
 export interface FormRuleHit {
@@ -67,7 +81,11 @@ export interface ItrFormResult {
   ruledOut: FormRuleHit[];
   /** Filing due date for the recommended form (non-audit). */
   dueDate: string;
+  /** Statutory basis for `dueDate`, from the rule pack. */
+  dueDateCitation: string;
   belatedDeadline: string;
+  /** s.139(5) revised-return last date (end of the AY under Finance Act 2026). */
+  revisedDeadline: string;
   lateFee: { default: number; incomeUpTo5L: number };
   notes: string[];
   disclaimers: string[];
@@ -132,8 +150,10 @@ export function recommendItrForm(
     simpleFormBlocks.push(
       "capital gains outside 111A/112A (property, debt MF, unlisted, foreign) need Schedule CG",
     );
-  if (input.houseProperties > 1)
-    simpleFormBlocks.push("more than one house property");
+  if (input.houseProperties > caps.maxHouseProperties)
+    simpleFormBlocks.push(
+      `more than ${caps.maxHouseProperties} house properties (ITR-1/ITR-4 admit up to ${caps.maxHouseProperties} from AY ${pack.ay}, CBDT Notification 45/2026)`,
+    );
   if (input.losses.capital || input.losses.houseProperty)
     simpleFormBlocks.push(
       "loss carry-forward needs Schedule CFL/BFLA (not present in ITR-1/ITR-4)",
@@ -153,13 +173,47 @@ export function recommendItrForm(
     simpleFormBlocks.push("tax deferred on startup ESOPs (s80-IAC)");
   if (input.hasLotteryOrGamingIncome)
     simpleFormBlocks.push(
-      "lottery/online-gaming/racehorse winnings are outside ITR-1",
+      "lottery/online-gaming/racehorse winnings (special-rate income) are outside ITR-1/ITR-4",
+    );
+
+  // ITR-1-only gate: s.194N TDS blocks Sahaj but not Sugam.
+  const itr1OnlyBlocks: string[] = [];
+  if (input.tds194N)
+    itr1OnlyBlocks.push("TDS deducted under s.194N (cash withdrawal)");
+
+  // Presumptive-scheme ceilings. Only checked when the caller supplies the
+  // turnover; a missing figure is reported rather than assumed within limits.
+  const presumptiveBlocks: string[] = [];
+  if (input.presumptive && input.presumptiveTurnover !== undefined) {
+    const p = caps.presumptive;
+    const scheme = input.presumptiveScheme ?? "44AD";
+    if (scheme === "44AD") {
+      const cap = input.cashReceiptsWithin5Pct
+        ? p.turnoverCap44ADDigital
+        : p.turnoverCap44AD;
+      if (input.presumptiveTurnover > cap)
+        presumptiveBlocks.push(
+          `44AD turnover exceeds ${lakh(cap)} (${input.cashReceiptsWithin5Pct ? "cash receipts within 5%" : "Rs 3 crore only where cash receipts are within 5%"}); the scheme is unavailable and s.44AB audit applies`,
+        );
+    } else if (scheme === "44ADA") {
+      const cap = input.cashReceiptsWithin5Pct
+        ? p.receiptsCap44ADADigital
+        : p.receiptsCap44ADA;
+      if (input.presumptiveTurnover > cap)
+        presumptiveBlocks.push(
+          `44ADA gross receipts exceed ${lakh(cap)}; the scheme is unavailable and s.44AB audit applies`,
+        );
+    }
+  }
+  if (input.presumptive && input.hasNonPresumptiveBusiness)
+    presumptiveBlocks.push(
+      "presumptive income alongside non-presumptive business/professional income: ITR-4 has no Schedule BP for the latter",
     );
 
   let recommended: ItrForm;
 
   if (hasBusinessSide) {
-    for (const rule of simpleFormBlocks) {
+    for (const rule of [...simpleFormBlocks, ...presumptiveBlocks]) {
       ruledOut.push({ form: "ITR-4", rule });
     }
     ruledOut.push({
@@ -175,19 +229,26 @@ export function recommendItrForm(
       input.presumptive &&
       !input.isPartnerInFirm &&
       !businessContinuity &&
-      simpleFormBlocks.length === 0;
+      simpleFormBlocks.length === 0 &&
+      presumptiveBlocks.length === 0;
 
     if (presumptiveOk) {
       recommended = "ITR-4";
       reasons.push(
         `presumptive scheme (44AD/44ADA/44AE) with income up to ${lakh(caps.simpleFormIncomeCap)} and no ITR-4 disqualifier`,
       );
+      if (input.presumptiveTurnover === undefined) {
+        notes.push(
+          `Presumptive turnover was not supplied, so the 44AD (${lakh(caps.presumptive.turnoverCap44AD)}, ${lakh(caps.presumptive.turnoverCap44ADDigital)} with cash receipts within 5%) / 44ADA (${lakh(caps.presumptive.receiptsCap44ADA)}, ${lakh(caps.presumptive.receiptsCap44ADADigital)}) ceilings were NOT checked. Above them the scheme lapses, s.44AB audit applies and the form is ITR-3.`,
+        );
+      }
     } else {
       recommended = "ITR-3";
       if (input.hasBusinessIncome)
         reasons.push("business/professional income needs Schedule BP (ITR-3)");
       if (input.isPartnerInFirm)
         reasons.push("partner in a firm must file ITR-3");
+      for (const rule of presumptiveBlocks) reasons.push(rule);
       if (businessContinuity && !input.hasBusinessIncome)
         reasons.push(
           "brought-forward business/speculative loss forces ITR-3 even with zero current-year business income: only ITR-3's Schedule CFL keeps the carry-forward alive",
@@ -202,9 +263,9 @@ export function recommendItrForm(
         );
       }
     }
-  } else if (simpleFormBlocks.length > 0) {
+  } else if (simpleFormBlocks.length > 0 || itr1OnlyBlocks.length > 0) {
     recommended = "ITR-2";
-    for (const rule of simpleFormBlocks) {
+    for (const rule of [...simpleFormBlocks, ...itr1OnlyBlocks]) {
       ruledOut.push({ form: "ITR-1", rule });
     }
     reasons.push(
@@ -213,7 +274,7 @@ export function recommendItrForm(
   } else {
     recommended = "ITR-1";
     reasons.push(
-      `resident individual, income up to ${lakh(caps.simpleFormIncomeCap)} from salary/one house property/other sources, LTCG 112A within Rs ${caps.ltcg112ASimpleFormCap.toLocaleString("en-IN")}, no disqualifier`,
+      `resident individual, income up to ${lakh(caps.simpleFormIncomeCap)} from salary/up to ${caps.maxHouseProperties} house properties/other sources, LTCG 112A within Rs ${caps.ltcg112ASimpleFormCap.toLocaleString("en-IN")}, no disqualifier`,
     );
   }
 
@@ -227,10 +288,12 @@ export function recommendItrForm(
     );
   }
 
-  const nonAuditDue =
-    (recommended === "ITR-1" || recommended === "ITR-2"
-      ? pack.deadlines.itr1_2
-      : pack.deadlines.itr3_4_nonAudit) ?? "";
+  const nonAuditKey =
+    recommended === "ITR-1" || recommended === "ITR-2"
+      ? "itr1_2"
+      : "itr3_4_nonAudit";
+  const nonAuditDue = pack.deadlines[nonAuditKey] ?? "";
+  const dueDateCitation = pack.deadlineCitations[nonAuditKey] ?? "";
 
   // s.80: only a return furnished within the s.139(1) due date carries THIS
   // year's losses forward. The form recommendation is unaffected -- Schedule
@@ -256,6 +319,11 @@ export function recommendItrForm(
   notes.push(
     "Deadlines are the non-audit dates from the rule pack; audit cases differ.",
   );
+  if (pack.deadlines.revisedWithoutFee234I) {
+    notes.push(
+      `A revised return under s.139(5) may be filed until ${pack.deadlines.revised} (Finance Act 2026), but one filed after ${pack.deadlines.revisedWithoutFee234I} attracts the new s.234I fee.`,
+    );
+  }
 
   return {
     fy: pack.fy,
@@ -264,7 +332,9 @@ export function recommendItrForm(
     reasons,
     ruledOut,
     dueDate: nonAuditDue,
+    dueDateCitation,
     belatedDeadline: pack.deadlines.belated ?? "",
+    revisedDeadline: pack.deadlines.revised ?? "",
     lateFee: pack.lateFee234F,
     notes,
     disclaimers: DISCLAIMERS,
@@ -283,7 +353,9 @@ export interface FilingChecklist {
   ay: string;
   form: ItrForm;
   dueDate: string;
+  dueDateCitation: string;
   belatedDeadline: string;
+  revisedDeadline: string;
   lateFee: { default: number; incomeUpTo5L: number };
   steps: FilingStep[];
   notes: string[];
@@ -360,14 +432,15 @@ export function filingChecklist(
     "Check salary against Form 16 Part B, TDS against 26AS, interest against AIS. Correct, never assume, the pre-fill.",
   );
   if (form !== "ITR-1") {
+    const alThreshold = lakh(pack.itrEligibility.scheduleALIncomeThreshold);
     add(
       "portal",
       "Fill the extra schedules",
       form === "ITR-2"
-        ? "Schedule CG (gains), Schedule FA (foreign assets, calendar-year basis), Schedule CFL (capital losses), Schedule AL if income > Rs 50L."
+        ? `Schedule CG (gains), Schedule FA (foreign assets, calendar-year basis), Schedule CFL (capital losses), Schedule AL if total income > ${alThreshold}.`
         : form === "ITR-3"
-          ? "Schedule BP (business), Trading/P&L/Balance Sheet (No Account Case zeros if nil business), Schedule CFL (loss continuity), Schedule CG/FA as applicable."
-          : "Schedule BP presumptive rows (44AD/44ADA gross turnover and deemed profit).",
+          ? `Schedule BP (business), Trading/P&L/Balance Sheet (No Account Case zeros if nil business), Schedule CFL (loss continuity), Schedule CG/FA as applicable, Schedule AL if total income > ${alThreshold}.`
+          : "Schedule BP presumptive rows (44AD/44ADA gross turnover and deemed profit); the AY 2026-27 form also wants the TDS section picked per row in Schedule TDS.",
     );
   }
   add(
@@ -386,21 +459,29 @@ export function filingChecklist(
     "Aadhaar OTP is fastest (also net banking / bank EVC). An unverified return is treated as never filed.",
   );
 
+  const dueKey =
+    form === "ITR-1" || form === "ITR-2" ? "itr1_2" : "itr3_4_nonAudit";
+  const notes = [
+    "Belated returns lose most loss carry-forwards (house-property loss survives).",
+    "Deadlines are the non-audit dates from the rule pack; audit cases differ.",
+  ];
+  if (pack.deadlines.revisedWithoutFee234I) {
+    notes.push(
+      `Revised returns (s.139(5)) are open until ${pack.deadlines.revised}; after ${pack.deadlines.revisedWithoutFee234I} the s.234I fee applies (Finance Act 2026).`,
+    );
+  }
+
   return {
     fy: pack.fy,
     ay: pack.ay,
     form,
-    dueDate:
-      (form === "ITR-1" || form === "ITR-2"
-        ? pack.deadlines.itr1_2
-        : pack.deadlines.itr3_4_nonAudit) ?? "",
+    dueDate: pack.deadlines[dueKey] ?? "",
+    dueDateCitation: pack.deadlineCitations[dueKey] ?? "",
     belatedDeadline: pack.deadlines.belated ?? "",
+    revisedDeadline: pack.deadlines.revised ?? "",
     lateFee: pack.lateFee234F,
     steps,
-    notes: [
-      "Belated returns lose most loss carry-forwards (house-property loss survives).",
-      "Deadlines are the non-audit dates from the rule pack; audit cases differ.",
-    ],
+    notes,
     disclaimers: DISCLAIMERS,
   };
 }

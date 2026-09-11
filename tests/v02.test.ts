@@ -15,6 +15,7 @@ import {
   decryptAis,
   parseAisDocument,
 } from "../src/parsers/ais.js";
+import { parseForm26AS } from "../src/parsers/form26as.js";
 
 const pack = loadRulePack("2025-26");
 
@@ -150,6 +151,21 @@ describe("interest234B (golden cases)", () => {
     // months 1-3 on 1,00,000 (3,000); 4-5 on 50,000 (1,000); 6 on 30,000 (300)
     expect(r.segments.map((s) => s.months)).toEqual([3, 2, 1]);
     expect(r.interest).toBe(4300);
+  });
+
+  it("s.234B(2): a payment after the interest window is not counted in the note", () => {
+    const r = interest234B(
+      {
+        assessedTax: 100000,
+        advanceTaxPaid: 0,
+        months: 4,
+        selfAssessmentPayments: [{ monthsFromApril: 6, amount: 100000 }],
+      },
+      pack,
+    );
+    expect(r.interest).toBe(4000);
+    expect(r.note).not.toContain("reduced by 1");
+    expect(r.note).toContain("did not reduce");
   });
 });
 
@@ -591,6 +607,84 @@ describe("AIS decrypt (synthetic round-trip)", () => {
   });
 });
 
+describe("parseForm26AS", () => {
+  const header = [
+    "Permanent Account Number (PAN): ABCDE1234F   Assessment Year: 2026-27",
+  ];
+
+  it("separates Part VI TCS rows (206C*) from TDS and totals them apart", () => {
+    const r = parseForm26AS(
+      [
+        ...header,
+        "PART-I - Details of Tax Deducted at Source",
+        "1^ACME LTD^ABCD12345E^500000.00^50000.00^50000.00",
+        "^1^192^31-Mar-2026^F^05-Apr-2026^-^500000.00^50000.00^50000.00",
+        "PART-VI - Details of Tax Collected at Source",
+        "1^CAR DEALER^WXYZ54321Q^1500000.00^15000.00^15000.00",
+        "^1^206CA^12-Dec-2025^F^20-Dec-2025^-^1500000.00^15000.00^15000.00",
+        "PART-VII - Details of Paid Refund",
+        "1^2025-26^ECS^12-Aug-2025^1500.00^0.00",
+      ].join("\n"),
+    );
+    expect(r.tdsEntries.length).toBe(1);
+    expect(r.totalTdsDeposited).toBe(50000);
+    expect(r.tcsEntries.length).toBe(1);
+    expect(r.tcsEntries[0]?.section).toBe("206CA");
+    expect(r.tcsEntries[0]?.collectorName).toBe("CAR DEALER");
+    expect(r.totalTcsDeposited).toBe(15000);
+    expect(r.warnings.some((w) => w.includes("Schedule TCS"))).toBe(true);
+  });
+
+  it("reads the booking status and excludes non-F rows from the creditable total", () => {
+    const r = parseForm26AS(
+      [
+        ...header,
+        "PART-I",
+        "1^ACME LTD^ABCD12345E^900000.00^90000.00^90000.00",
+        "^1^192^30-Jun-2025^F^07-Jul-2025^-^300000.00^30000.00^30000.00",
+        "^2^192^30-Sep-2025^U^-^-^300000.00^30000.00^30000.00",
+        "^3^192^31-Dec-2025^P^-^-^300000.00^30000.00^30000.00",
+      ].join("\n"),
+    );
+    expect(r.tdsEntries.map((e) => e.status)).toEqual(["F", "U", "P"]);
+    expect(r.totalTdsDeposited).toBe(90000);
+    expect(r.creditableTdsDeposited).toBe(30000);
+    expect(
+      r.warnings.some((w) => w.includes("2 row(s) carry a booking status")),
+    ).toBe(true);
+  });
+
+  it("a deductor whose name contains PART does not reset the context", () => {
+    const r = parseForm26AS(
+      [
+        ...header,
+        "PART-I",
+        "1^PART B TRADERS PVT LTD^ABCD12345E^100000.00^10000.00^10000.00",
+        "^1^194J^31-Mar-2026^F^-^-^100000.00^10000.00^10000.00",
+      ].join("\n"),
+    );
+    expect(r.tdsEntries.length).toBe(1);
+    expect(r.tdsEntries[0]?.deductorName).toBe("PART B TRADERS PVT LTD");
+  });
+
+  it("accepts balanced accounting parentheses and rejects unbalanced ones", () => {
+    const r = parseForm26AS(
+      [
+        ...header,
+        "PART-I",
+        "1^ACME LTD^ABCD12345E^0^0^0",
+        "^1^192^31-Mar-2026^F^-^-^(1,000.00)^(100.00)^(100.00)",
+        "^2^192^31-Mar-2026^F^-^-^(1,000.00^100.00^100.00",
+      ].join("\n"),
+    );
+    expect(r.tdsEntries[0]?.tdsDeposited).toBe(-100);
+    expect(r.tdsEntries[0]?.isCorrection).toBe(true);
+    // The unbalanced cell is not numeric: read as 0 with a warning.
+    expect(r.tdsEntries[1]?.amountPaid).toBe(0);
+    expect(r.warnings.some((w) => w.includes("non-numeric"))).toBe(true);
+  });
+});
+
 describe("reconcile", () => {
   it("H1: TDS over-claim vs 26AS", () => {
     const r = reconcile(
@@ -610,6 +704,84 @@ describe("reconcile", () => {
     const h1 = r.findings.find((f) => f.id === "H1");
     expect(h1?.severity).toBe("high");
     expect(h1?.figures?.delta).toBe(10000);
+    expect(h1?.remedy).toContain("2 years");
+  });
+
+  it("H1: a whole-rupee claim against a paise 26AS figure is not an over-claim", () => {
+    // 26AS 15,000.60; the return schedule takes whole rupees, so 15,001.
+    const r = reconcile(
+      {
+        form26asTds: [
+          {
+            tan: "ABCD12345E",
+            section: "192",
+            amountPaid: 1,
+            tdsDeposited: 15000.6,
+          },
+        ],
+        return: { tdsClaimed: 15001 },
+      },
+      pack,
+    );
+    expect(r.checksRun).toContain("H1");
+    expect(r.findings.find((f) => f.id === "H1")).toBeUndefined();
+  });
+
+  it("H1 measures against the creditable (status F) total, and M2 names the rest", () => {
+    const r = reconcile(
+      {
+        form26asTds: [
+          {
+            tan: "ABCD12345E",
+            section: "192",
+            amountPaid: 1,
+            tdsDeposited: 60000,
+            status: "F",
+          },
+          {
+            tan: "ABCD12345E",
+            section: "192",
+            amountPaid: 1,
+            tdsDeposited: 30000,
+            status: "U",
+          },
+        ],
+        return: { tdsClaimed: 90000 },
+      },
+      pack,
+    );
+    const h1 = r.findings.find((f) => f.id === "H1");
+    expect(h1?.figures?.b).toBe(60000);
+    expect(h1?.title).toContain("status F");
+    const m2 = r.findings.find((f) => f.id === "M2");
+    expect(m2?.severity).toBe("medium");
+    expect(m2?.figures?.delta).toBe(30000);
+  });
+
+  it("TCS rows passed in the TDS list are ignored by every TDS check", () => {
+    const r = reconcile(
+      {
+        form26asTds: [
+          {
+            tan: "ABCD12345E",
+            section: "192",
+            amountPaid: 1,
+            tdsDeposited: 50000,
+          },
+          {
+            tan: "WXYZ54321Q",
+            section: "206CA",
+            amountPaid: 1,
+            tdsDeposited: 15000,
+          },
+        ],
+        return: { tdsClaimed: 65000 },
+      },
+      pack,
+    );
+    const h1 = r.findings.find((f) => f.id === "H1");
+    expect(h1?.figures?.b).toBe(50000);
+    expect(r.tdsByHead.some((h) => h.sections.includes("206CA"))).toBe(false);
   });
 
   it("H3: missing employer Form 16", () => {

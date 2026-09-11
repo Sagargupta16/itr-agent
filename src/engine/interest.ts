@@ -116,9 +116,14 @@ export function interest234B(
   }
 
   const interest = segments.reduce((s, seg) => s + seg.interest, 0);
-  const note = payments.length
-    ? `1%/month from 1 April of the AY, principal reduced by ${payments.length} self-assessment payment(s) under s.140A (s.234B(2)); part month = full month`
-    : `1%/month on ${base} for ${input.months} month(s) from 1 April of the AY (part month = full month)`;
+  // Only payments that fell inside the interest window changed anything; a
+  // payment dated after `months` is ignored above and must not be counted here.
+  const effectivePayments = payments.filter(
+    (p) => p.monthsFromApril < input.months,
+  ).length;
+  const note = effectivePayments
+    ? `1%/month from 1 April of the AY, principal reduced by ${effectivePayments} self-assessment payment(s) under s.140A (s.234B(2)); part month = full month`
+    : `1%/month on ${base} for ${input.months} month(s) from 1 April of the AY (part month = full month)${payments.length ? "; the supplied s.140A payment(s) fall at or after the end of the interest window and did not reduce it" : ""}`;
 
   return {
     applies: true,
