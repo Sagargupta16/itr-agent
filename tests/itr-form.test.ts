@@ -191,6 +191,123 @@ describe("recommendItrForm", () => {
     const r = recommendItrForm({ ...base, isDirector: true }, pack);
     expect(r.recommended).toBe("ITR-2");
   });
+
+  // CBDT Notification 45/2026: the AY 2026-27 ITR-1/ITR-4 admit TWO house
+  // properties. "More than one" was the AY 2025-26 rule.
+  it("two house properties stay in ITR-1 (AY 2026-27); three bump to ITR-2", () => {
+    expect(
+      recommendItrForm({ ...base, houseProperties: 2 }, pack).recommended,
+    ).toBe("ITR-1");
+    const three = recommendItrForm({ ...base, houseProperties: 3 }, pack);
+    expect(three.recommended).toBe("ITR-2");
+    expect(three.ruledOut.some((h) => h.rule.includes("more than 2"))).toBe(
+      true,
+    );
+  });
+
+  it("s.194N TDS bars ITR-1 but not ITR-4", () => {
+    const salaried = recommendItrForm({ ...base, tds194N: true }, pack);
+    expect(salaried.recommended).toBe("ITR-2");
+    expect(salaried.ruledOut.some((h) => h.rule.includes("194N"))).toBe(true);
+    const presumptive = recommendItrForm(
+      {
+        ...base,
+        totalIncome: 1200000,
+        hasBusinessIncome: true,
+        presumptive: true,
+        tds194N: true,
+      },
+      pack,
+    );
+    expect(presumptive.recommended).toBe("ITR-4");
+  });
+
+  describe("presumptive ceilings", () => {
+    const trader = {
+      ...base,
+      totalIncome: 1200000,
+      hasBusinessIncome: true,
+      presumptive: true,
+    };
+
+    it("44AD above Rs 2 crore forces ITR-3 (3 crore only with cash receipts within 5%)", () => {
+      const over = recommendItrForm(
+        { ...trader, presumptiveScheme: "44AD", presumptiveTurnover: 25000000 },
+        pack,
+      );
+      expect(over.recommended).toBe("ITR-3");
+      expect(
+        over.reasons.some((x) => x.includes("44AD turnover exceeds")),
+      ).toBe(true);
+      const digital = recommendItrForm(
+        {
+          ...trader,
+          presumptiveScheme: "44AD",
+          presumptiveTurnover: 25000000,
+          cashReceiptsWithin5Pct: true,
+        },
+        pack,
+      );
+      expect(digital.recommended).toBe("ITR-4");
+    });
+
+    it("44ADA above Rs 50 lakh forces ITR-3 (75 lakh with cash receipts within 5%)", () => {
+      const over = recommendItrForm(
+        { ...trader, presumptiveScheme: "44ADA", presumptiveTurnover: 6000000 },
+        pack,
+      );
+      expect(over.recommended).toBe("ITR-3");
+      const digital = recommendItrForm(
+        {
+          ...trader,
+          presumptiveScheme: "44ADA",
+          presumptiveTurnover: 6000000,
+          cashReceiptsWithin5Pct: true,
+        },
+        pack,
+      );
+      expect(digital.recommended).toBe("ITR-4");
+    });
+
+    it("says so when the turnover was not supplied", () => {
+      const r = recommendItrForm(trader, pack);
+      expect(r.recommended).toBe("ITR-4");
+      expect(r.notes.some((n) => n.includes("NOT checked"))).toBe(true);
+    });
+
+    it("presumptive plus non-presumptive business forces ITR-3", () => {
+      const r = recommendItrForm(
+        { ...trader, hasNonPresumptiveBusiness: true },
+        pack,
+      );
+      expect(r.recommended).toBe("ITR-3");
+    });
+  });
+
+  it("returns the statutory citation for the due date and the revised deadline", () => {
+    const itr1 = recommendItrForm(base, pack);
+    expect(itr1.dueDateCitation).toContain("s.139(1)");
+    expect(itr1.revisedDeadline).toBe("2027-03-31");
+    expect(itr1.notes.some((n) => n.includes("s.234I"))).toBe(true);
+    const itr3 = recommendItrForm({ ...base, hasBusinessIncome: true }, pack);
+    expect(itr3.dueDate).toBe("2026-08-31");
+    expect(itr3.dueDateCitation).toContain("Finance Act 2026");
+  });
+
+  it("the lottery disqualifier names both simple forms", () => {
+    const r = recommendItrForm(
+      {
+        ...base,
+        hasBusinessIncome: true,
+        presumptive: true,
+        hasLotteryOrGamingIncome: true,
+      },
+      pack,
+    );
+    const hit = r.ruledOut.find((h) => h.rule.includes("lottery"));
+    expect(hit?.form).toBe("ITR-4");
+    expect(hit?.rule).toContain("ITR-4");
+  });
 });
 
 describe("filingChecklist", () => {
@@ -213,5 +330,16 @@ describe("filingChecklist", () => {
     expect(c.steps.map((s) => s.step)).toEqual(
       Array.from({ length: c.steps.length }, (_, i) => i + 1),
     );
+  });
+
+  it("Schedule AL threshold is Rs 1 crore, not 50 lakh", () => {
+    const c = filingChecklist("ITR-2", pack);
+    const schedules = c.steps.find(
+      (s) => s.action === "Fill the extra schedules",
+    );
+    expect(schedules?.detail).toContain("Rs 100 lakh");
+    expect(schedules?.detail).not.toContain("50L");
+    expect(c.dueDateCitation).toContain("s.139(1)");
+    expect(c.notes.some((n) => n.includes("s.234I"))).toBe(true);
   });
 });

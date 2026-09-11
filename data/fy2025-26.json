@@ -1,10 +1,15 @@
 {
   "fy": "2025-26",
   "ay": "2026-27",
-  "rulePackVersion": "1.3.0",
+  "rulePackVersion": "1.4.0",
   "sources": [
     "https://www.incometax.gov.in/iec/foportal/help/individual/return-applicable-1",
+    "CBDT Notification 45/2026 (30-Mar-2026): AY 2026-27 ITR forms; ITR-1/ITR-4 admit up to two house properties",
     "Finance Act 2025 (new regime slabs, 87A rebate, standard deduction)",
+    "Income-tax Act s.87A first proviso (clauses (a) and (b) test TOTAL income) and second proviso (rebate capped at tax computed at s.115BAC(1A) rates)",
+    "Finance Act 2026: s.139(1) due date for non-audit assessees with business/professional income moved to 31 August; s.139(5) revised return allowed to the end of the AY subject to the s.234I fee",
+    "Income-tax Act s.44AD (Rs 2 crore / Rs 3 crore where cash receipts <= 5%), s.44ADA (Rs 50 lakh / Rs 75 lakh), s.44AE (up to 10 goods carriages)",
+    "Income-tax Act s.80CCD(2) as amended by Finance (No.2) Act 2024: 14% of salary for every employer where income is chargeable under s.115BAC(1A)",
     "Finance Act 2025 First Schedule Part I Paragraph A (surcharge bands; 25%/37% exclude 111A/112/112A/dividend income)",
     "Income-tax Act s.111A proviso and s.112A(2) proviso (unexhausted basic exemption set off against listed-equity gains)",
     "Income-tax Act s.288A/288B (rounding of total income and tax payable) and Rule 119A (interest base)"
@@ -45,9 +50,13 @@
       "incomeThreshold": 1200000,
       "maxRebate": 60000,
       "marginalRelief": true,
-      "thresholdBasis": "normalIncome",
+      "thresholdBasis": "totalIncome",
       "allowAgainst111A": false,
       "allowAgainst112A": false
+    },
+    "employerNps80CCD2": {
+      "pctOfSalary": 0.14,
+      "aggregateEmployerContributionCap": 750000
     },
     "surchargeCapRate": 0.25
   },
@@ -128,7 +137,12 @@
       "Mumbai",
       "Kolkata",
       "Chennai"
-    ]
+    ],
+    "employerNps80CCD2": {
+      "pctOfSalaryPrivate": 0.1,
+      "pctOfSalaryGovernment": 0.14,
+      "aggregateEmployerContributionCap": 750000
+    }
   },
   "capitalGains": {
     "stcg111A": 0.2,
@@ -196,7 +210,15 @@
     "itr3_4_nonAudit": "2026-08-31",
     "audit": "2026-10-31",
     "belated": "2026-12-31",
-    "revised": "2027-03-31"
+    "revised": "2027-03-31",
+    "revisedWithoutFee234I": "2026-12-31"
+  },
+  "deadlineCitations": {
+    "itr1_2": "s.139(1) Explanation 2(c): 31 July for non-audit assessees without business or professional income",
+    "itr3_4_nonAudit": "s.139(1) as amended by Finance Act 2026: 31 August for non-audit assessees with business or professional income (AY 2026-27 onward)",
+    "audit": "s.139(1) Explanation 2(a): 31 October where accounts are audited (audit report due 30 September)",
+    "belated": "s.139(4): 31 December of the AY, or completion of assessment, whichever is earlier",
+    "revised": "s.139(5) as substituted by Finance Act 2026: any time before the end of the AY, subject to the s.234I fee where revised after 31 December"
   },
   "lateFee234F": {
     "default": 5000,
@@ -205,7 +227,20 @@
   "itrEligibility": {
     "simpleFormIncomeCap": 5000000,
     "ltcg112ASimpleFormCap": 125000,
-    "agriIncomeCap": 5000
+    "agriIncomeCap": 5000,
+    "maxHouseProperties": 2,
+    "scheduleALIncomeThreshold": 10000000,
+    "presumptive": {
+      "turnoverCap44AD": 20000000,
+      "turnoverCap44ADDigital": 30000000,
+      "receiptsCap44ADA": 5000000,
+      "receiptsCap44ADADigital": 7500000,
+      "maxVehicles44AE": 10
+    }
+  },
+  "tdsCorrectionWindow": {
+    "description": "Deductor correction statements: 6 years from the end of the FY in which the statement was due (proviso to s.200(3), Finance (No.2) Act 2024), cut to 2 years from 1 April 2026 under s.397(3)(f) of the Income-tax Act 2025",
+    "yearsFrom2026": 2
   },
   "rounding": {
     "income288A": 10,

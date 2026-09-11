@@ -11,7 +11,11 @@ export interface Rebate87A {
   incomeThreshold: number;
   maxRebate: number;
   marginalRelief: boolean;
-  /** The 5L (old) threshold tests TOTAL income; the 12L (new) tests normal only. */
+  /** Both regimes test TOTAL income (s.87A main body and first proviso
+   * clauses (a)/(b) all say "total income"). `normalIncome` is kept as a
+   * value so a pack can encode the contrary reading explicitly; pack 1.3.0
+   * shipped the new regime on it, which over-rebated anyone whose gains pushed
+   * total income past the threshold. */
   thresholdBasis?: "totalIncome" | "normalIncome";
   /** Old regime: 87A can offset 111A STCG tax (s.112A(6) bars 112A in both). */
   allowAgainst111A?: boolean;
@@ -74,6 +78,13 @@ export interface RulePack {
     slabs: Slab[];
     standardDeduction: number;
     rebate87A: Rebate87A;
+    /** s.80CCD(2): the one Chapter VI-A deduction 115BAC(2) keeps. 14% of
+     * salary for every employer where income is chargeable under 115BAC(1A). */
+    employerNps80CCD2: {
+      pctOfSalary: number;
+      /** s.17(2)(vii): employer PF+NPS+superannuation above this is a perquisite. */
+      aggregateEmployerContributionCap: number;
+    };
     surchargeCapRate: number;
   };
   oldRegime: {
@@ -86,6 +97,11 @@ export interface RulePack {
     rebate87A: Rebate87A;
     deductionCaps: Record<string, number>;
     hraMetros: string[];
+    employerNps80CCD2: {
+      pctOfSalaryPrivate: number;
+      pctOfSalaryGovernment: number;
+      aggregateEmployerContributionCap: number;
+    };
   };
   capitalGains: {
     stcg111A: number;
@@ -115,13 +131,30 @@ export interface RulePack {
     section234B_paidThresholdPct: number;
   };
   deadlines: Record<string, string>;
+  /** Statutory basis for each `deadlines` key, so tools can say WHY a date is
+   * what it is instead of asserting an uncited calendar date. */
+  deadlineCitations: Record<string, string>;
   lateFee234F: { default: number; incomeUpTo5L: number };
   /** ITR-1/ITR-4 eligibility ceilings (statutory, so they live here not in code). */
   itrEligibility: {
     simpleFormIncomeCap: number;
     ltcg112ASimpleFormCap: number;
     agriIncomeCap: number;
+    /** ITR-1/ITR-4 admit up to this many house properties (2 from AY 2026-27). */
+    maxHouseProperties: number;
+    /** Schedule AL is mandatory in ITR-2/ITR-3 above this total income. */
+    scheduleALIncomeThreshold: number;
+    presumptive: {
+      turnoverCap44AD: number;
+      /** 44AD ceiling where cash receipts are at most 5% of turnover. */
+      turnoverCap44ADDigital: number;
+      receiptsCap44ADA: number;
+      receiptsCap44ADADigital: number;
+      maxVehicles44AE: number;
+    };
   };
+  /** How long a deductor can still file a TDS correction statement. */
+  tdsCorrectionWindow: { description: string; yearsFrom2026: number };
   rounding: {
     /** s.288A: total income rounded to the nearest multiple of this. */
     income288A: number;
@@ -155,6 +188,19 @@ function resolveDataDir(): string {
 }
 
 const DATA_DIR = resolveDataDir();
+
+/** The package version, read from package.json next to data/. The server used
+ * to hardcode it and drifted (0.3.0 while the package was 0.4.0). */
+export function packageVersion(): string {
+  try {
+    const raw = readFileSync(join(DATA_DIR, "..", "package.json"), "utf8");
+    const parsed = JSON.parse(raw) as { version?: unknown };
+    if (typeof parsed.version === "string") return parsed.version;
+  } catch {
+    // fall through
+  }
+  return "0.0.0";
+}
 
 const cache = new Map<string, RulePack>();
 
@@ -199,8 +245,10 @@ function validatePack(fy: string, pack: RulePack): void {
     "surcharge",
     "advanceTax",
     "deadlines",
+    "deadlineCitations",
     "lateFee234F",
     "itrEligibility",
+    "tdsCorrectionWindow",
     "rounding",
     "interest",
     "hra",
@@ -222,6 +270,20 @@ function validatePack(fy: string, pack: RulePack): void {
   if (!pack.oldRegime.slabsSenior || !pack.oldRegime.slabsSuperSenior) {
     throw new Error(
       `rule pack fy${fy}.json lacks oldRegime.slabsSenior / slabsSuperSenior (added in pack 1.2.0). Senior basic exemption is a slab set, not an income deduction.`,
+    );
+  }
+
+  // Pack 1.4.0 additions. Each one replaced a figure that was either hardcoded
+  // in itr-form.ts or missing altogether, so an older pack must not load.
+  if (
+    !pack.newRegime.employerNps80CCD2 ||
+    !pack.oldRegime.employerNps80CCD2 ||
+    !pack.itrEligibility.presumptive ||
+    typeof pack.itrEligibility.maxHouseProperties !== "number" ||
+    typeof pack.itrEligibility.scheduleALIncomeThreshold !== "number"
+  ) {
+    throw new Error(
+      `rule pack fy${fy}.json predates pack 1.4.0: needs employerNps80CCD2 on both regimes and itrEligibility.{maxHouseProperties, scheduleALIncomeThreshold, presumptive}.`,
     );
   }
 }

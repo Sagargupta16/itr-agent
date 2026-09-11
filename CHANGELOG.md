@@ -3,7 +3,51 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.5.0] - 2026-09-10
+
+A correctness release driven by a line-by-line review of every source file and a fact-check of every statutory constant against primary sources (Finance Acts 2025 and 2026, CBDT Notification 45/2026, the incometaxindia.gov.in section texts, the notified AY 2026-27 forms). The fact-check overturned two of the review's own findings: the pack's 31 August due date for non-audit ITR-3/ITR-4 and its 31 March revised-return date are both correct under Finance Act 2026, so they stay and now carry citations. It also confirmed three defects the review had only suspected.
+
+Minor, not patch: computed output changes for anyone with 111A/112A gains under the new regime (the s.87A threshold), `parse_form26as` output gains fields and stops summing TCS into TDS, and every tool grows optional inputs.
+
+### Fixed
+
+- **s.87A (new regime) tests TOTAL income, not slab-rate income.** The first proviso to s.87A says "where the total income does not exceed twelve lakh rupees" in clause (a) and measures the clause (b) marginal relief from total income too; the second proviso (Finance Act 2025) caps the rebate at tax computed at s.115BAC(1A) rates. Pack 1.3.0 tested normal income only, so a filer with 12 lakh of salary and any equity gains was rebated Rs 60,000 the statute does not give them. The published FY 2025-26 worked example (net salary 12,00,000 + LTCG 1,25,000 = total 13,25,000, rebate nil, tax 62,400) now pins the engine. The cap on the rebate (never against 111A/112A tax) is unchanged and still mutation-tested. `compute_tax` adds a disclaimer naming the reading whenever gains are present under the new regime; a pack may still encode the contrary reading via `thresholdBasis: "normalIncome"`, and a test proves that path works. Source: incometaxindia.gov.in s.87A text; Finance Act 2025 s.20
+- **ITR-1/ITR-4 admit TWO house properties for AY 2026-27.** The notified ITR-1 (CBDT Notification 45/2026, 30 March 2026) reads "two house properties"; the engine ruled out anyone with more than one. The limit is now `itrEligibility.maxHouseProperties` in the pack
+- **`parse_form26as` summed TCS into TDS.** The part-header reset did not help: TCS collectors carry TANs exactly as deductors do, so a Part VI (TCS) block re-established a "deductor" and its 206C* rows landed in `tdsEntries` and `totalTdsDeposited`. TCS is a separate credit in Schedule TCS. Rows whose section begins 206C now go to `tcsEntries` with their own `totalTcsDeposited`, and `reconcile_documents` ignores any 206C* row a caller passes in the TDS list. The file's part map was also wrong (Part II is Form 15G/15H TDS, not TCS; SFT and challan data moved to AIS years ago) and is rewritten
+- **`parse_form26as` ignored the booking status.** Rows marked U (unmatched), P (provisional) or O (overbooked) were summed as creditable. CPC credits only status F. Every row now carries `status`, the parser reports `creditableTdsDeposited` (F rows only) beside the raw total and warns when non-F rows exist, and `reconcile_documents` gained check M2 (the spec's long-listed "U/O booking status" check) plus an H1 that measures the claim against the creditable total
+- **Reconcile H1 raised a HIGH over-claim finding for 40 paise.** 26AS carries paise and the return schedule takes whole rupees, so 15,001 claimed against 15,000.60 deposited was reported as an excess claim. H1 now honours the same Rs 10 pass tier as every other check
+- **TDS correction-window remedy text was stale.** "6 years" was the Finance (No.2) Act 2024 rule; s.397(3)(f) of the Income-tax Act 2025 cuts it to 2 years from 1 April 2026. The text now comes from `tdsCorrectionWindow` in the pack
+- Schedule AL in `filing_checklist` said "income > Rs 50L"; the threshold has been Rs 1 crore since the AY 2025-26 forms. Now `itrEligibility.scheduleALIncomeThreshold`
+- The lottery/gaming disqualifier read "outside ITR-1" even when pushed as an ITR-4 rule
+- The 234B note claimed the principal was "reduced by N self-assessment payment(s)" even when every payment fell after the interest window and changed nothing
+- Reconcile M3 hardcoded `medium` while every sibling check derived severity from the tolerance tier
+- `McpServer` advertised version 0.3.0 while the package was 0.4.0. The version is now read from package.json
+- The 26AS text mirror masked PAN as `ABCXXXXXF` (9 characters) while the AIS mirror produced `ABCXXXXXXF` (10). One `maskPan` now serves both
+- s.288A rounding was applied to the normal head only; the statute rounds total income. The total (all heads) is now rounded and the odd rupees absorbed by the normal head, so reported gains stay at the broker's figure
+- `NUMERIC_RE` accepted unbalanced accounting parentheses (`(1,000.00` and `-(100)`); `PART_HEADER_RE` matched a deductor named "PART B TRADERS" mid-row and reset the context. Both tightened, both tested
+- `package.json` `main` pointed at the stdio bootstrap, so `import "itr-agent"` started a server. Removed; this is a bin-only package
+- `schedule_advance_tax.paidSoFar`, every `reconcile_documents` figure and `recommend_itr_form.houseProperties` lacked the rupee ceiling (or, for house count, had a ceiling of 1e12). All bounded
+
+### Added
+
+- `compute_tax` / `compare_regimes`: `employerNps80CCD2` (+ `governmentEmployer`). s.80CCD(2) is the one Chapter VI-A deduction s.115BAC(2) keeps, so it reduces income in BOTH regimes, capped at 14% of salary under the new regime and 10% private / 14% government under the old. README's own example prompt ("18L CTC with 50K NPS through my employer") could not previously be modelled and skewed `compare_regimes` toward the old regime. Source: s.80CCD(2) as amended by Finance (No.2) Act 2024
+- `compute_tax` / `compare_regimes`: `housePropertyLoss`. Old regime: set off against other heads up to Rs 2 lakh (s.71(3A)), the excess reported as carried forward (s.71B). New regime: no inter-head set-off at all (s.115BAC(2)(ii)(b)), the whole loss reported as carried forward. Output gains `housePropertyLossSetOff`, `housePropertyLossCarriedForward`, `employerNps80CCD2Allowed` and `totalIncome`
+- `recommend_itr_form`: `presumptiveScheme`, `presumptiveTurnover`, `cashReceiptsWithin5Pct`, `hasNonPresumptiveBusiness`, `tds194N`. The 44AD (Rs 2 crore / 3 crore) and 44ADA (Rs 50 lakh / 75 lakh) ceilings are enforced when the turnover is supplied and named as unchecked when it is not; presumptive plus non-presumptive business forces ITR-3; s.194N TDS bars ITR-1 (but not ITR-4). Output gains `dueDateCitation` and `revisedDeadline`
+- `filing_checklist` and `recommend_itr_form` return the statutory basis for every deadline (`deadlineCitations` in the pack) and note the Finance Act 2026 s.139(5) window: revised returns to 31 March 2027, with the new s.234I fee for revisions after 31 December 2026. `list_tax_years` returns `deadlineCitations` too
+- `compute_hra`: `periods` is optional when `eightyGG` is supplied, so an 80GG-only caller no longer invents a dummy HRA period. Calling with neither is a named error
+- `compute_interest_234`: `taxOutstandingFor234A` (the misspelt `taxOutstandingForms234A` is still accepted, marked deprecated)
+- `parse_form26as` / `parse_ais` refuse dotfiles and any extension outside `.txt` (26AS) or `.json`/`.txt` (AIS). `path` was an arbitrary-file-read for a prompt-injected client; SECURITY.md lists it as in scope
+- Rule pack 1.4.0: `newRegime.employerNps80CCD2`, `oldRegime.employerNps80CCD2`, `deadlineCitations`, `deadlines.revisedWithoutFee234I`, `itrEligibility.{maxHouseProperties, scheduleALIncomeThreshold, presumptive}`, `tdsCorrectionWindow`; `newRegime.rebate87A.thresholdBasis` flipped to `totalIncome`. `validatePack()` rejects a pre-1.4.0 pack
+- 30 new tests (151 total): the s.87A total-income cases on both sides of the threshold plus the contrary-pack path, s.288A on total income, 80CCD(2) caps in both regimes, house-property loss in both regimes, two/three house properties, s.194N, 44AD and 44ADA ceilings with and without the digital-receipts uplift, the missing-turnover note, mixed presumptive business, deadline citations, Schedule AL, TCS separation, booking status, the PART-in-a-name case, balanced/unbalanced parentheses, H1 paise, H1-vs-creditable + M2, TCS rows ignored by reconcile, the 234B note, the server version, the extension allow-list, 80GG-only HRA, the 234A alias, and the README NPS example through `compare_regimes`
+
+### Changed
+
+- README: the "Filing after the due date" section no longer hedges on the 31 August and 31 March dates. Both are Finance Act 2026 (s.139(1) for non-audit assessees with business/professional income; substituted s.139(5) to the end of the AY, subject to s.234I). CBDT granted no AY 2026-27 extension. The 26AS text export is described as DOB-protected rather than password-free; the Form 130 / 8-metro attribution reads Income-tax Act 2025 and Income-tax Rules 2026 rather than Budget 2026 (only the buyback reversion is Finance Act 2026)
+- Roadmap: this release is v0.5; the loss set-off engine, Form 16 PDF and broker parsers move to v0.6, Schedule FA and the rest to v0.7
+
+### Verified, unchanged
+
+Every other constant in the pack was checked against a primary source and stands: both regimes' slabs and standard deductions, 111A 20% / 112A 12.5% above 1.25 lakh, the basic-exemption set-off under both regimes, all four surcharge bands with the 25% new-regime cap, the 15% gains cap and the enhanced-band exclusion, 4% cess, s.288A/288B/Rule 119A rounding, the s.208 threshold and 15/45/75/100 installments, 234A/B/C rates and the 12%/36% safe harbours, s.234F 5,000/1,000, s.80 forfeiture with s.71B survival, every Chapter VI-A cap in `list_deductions`, the four Rule 2A metros for FY 2025-26, the Rule 26C 1 lakh PAN threshold, the 80GG limbs, the AIS decryption scheme (unchanged through April 2026 per every public implementation), the no-public-filing-API claim, and the 1961 Act as the governing statute for AY 2026-27
 
 ## [0.4.0] - 2026-09-06
 
