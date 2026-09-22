@@ -13,6 +13,9 @@ export interface TdsSummaryEntry {
   section?: string | undefined;
   amountPaid: number;
   tdsDeposited: number;
+  /** TRACES booking status; only "F" is creditable. Rows marked P/U/O are
+   * excluded from the H1 creditable total and reported separately. */
+  status?: string | null | undefined;
 }
 
 export interface ReconcileInput {
@@ -125,24 +128,44 @@ export function reconcile(
   const checksRun: string[] = [];
   const checksSkipped: { id: string; reason: string }[] = [];
 
-  const tds26 = input.form26asTds ?? [];
+  const tds26All = input.form26asTds ?? [];
+  // TCS rows (206C*) are a different credit (Schedule TCS). If a caller passes
+  // the raw 26AS rows without splitting, keep them out of every TDS check.
+  const tds26 = tds26All.filter((e) => !/^206C/.test(e.section?.trim() ?? ""));
   const total26asTds = sumRupees(tds26.map((e) => e.tdsDeposited));
+  const creditable26 = tds26.filter(
+    (e) => e.status == null || e.status === "" || e.status === "F",
+  );
+  const creditable26asTds = sumRupees(creditable26.map((e) => e.tdsDeposited));
+  const nonFinal26 = tds26.filter(
+    (e) => e.status != null && e.status !== "" && e.status !== "F",
+  );
 
-  // H1: return TDS claim vs 26AS deposited (exact -- CPC restricts to 26AS)
+  // H1: return TDS claim vs 26AS CREDITABLE total (status F). CPC restricts
+  // credit to 26AS, and within 26AS to final rows. The Rs 10 pass tolerance
+  // absorbs paise: 26AS carries paise, the return is whole rupees, so a claim
+  // of 15,001 against 15,000.60 is rounding, not an over-claim.
   if (input.return?.tdsClaimed !== undefined && tds26.length > 0) {
     checksRun.push("H1");
-    if (input.return.tdsClaimed > total26asTds) {
+    const delta = input.return.tdsClaimed - creditable26asTds;
+    if (delta > 0 && tier(delta, pack) !== "pass") {
+      const heldBack = total26asTds - creditable26asTds;
       findings.push({
         id: "H1",
         severity: "high",
-        title: "TDS claimed in return exceeds 26AS deposited total",
+        title:
+          heldBack > 0
+            ? "TDS claimed in return exceeds the creditable (status F) 26AS total"
+            : "TDS claimed in return exceeds 26AS deposited total",
         figures: {
           a: input.return.tdsClaimed,
-          b: total26asTds,
-          delta: input.return.tdsClaimed - total26asTds,
+          b: creditable26asTds,
+          delta,
         },
         remedy:
-          "CPC restricts credit to 26AS; the excess claim yields a 143(1) demand. Ask the deductor to revise their TDS return (correction window: 6 years).",
+          heldBack > 0
+            ? `CPC restricts credit to 26AS rows with status F; ${nonFinal26.length} row(s) worth ${heldBack} are provisional/unmatched/overbooked and will not be credited until the deductor fixes their statement. Ask them to revise it (${pack.tdsCorrectionWindow.description}).`
+            : `CPC restricts credit to 26AS; the excess claim yields a 143(1) demand. Ask the deductor to revise their TDS return (${pack.tdsCorrectionWindow.description}).`,
         noticePreempted: "143(1) adjustment",
       });
     }
@@ -297,10 +320,11 @@ export function reconcile(
       const aisSalary = input.ais.salaryByTan[f16.tan];
       if (aisSalary === undefined) continue;
       const delta = f16.grossSalary - aisSalary;
-      if (tier(delta, pack) !== "pass") {
+      const t = tier(delta, pack);
+      if (t !== "pass") {
         findings.push({
           id: "M3",
-          severity: "medium",
+          severity: severityFor(t),
           title: `Form 16 gross salary differs from AIS salary (TAN ${f16.tan})`,
           figures: { a: f16.grossSalary, b: aisSalary, delta },
           remedy:
@@ -374,6 +398,30 @@ export function reconcile(
     }
   } else {
     checksSkipped.push({ id: "M5", reason: "needs form26asTds" });
+  }
+
+  // M2: 26AS rows whose booking status is not F. Not creditable yet; the
+  // return will be adjusted at 143(1) if they are claimed as they stand.
+  if (tds26.some((e) => e.status != null && e.status !== "")) {
+    checksRun.push("M2");
+    if (nonFinal26.length > 0) {
+      const heldBack = sumRupees(nonFinal26.map((e) => e.tdsDeposited));
+      findings.push({
+        id: "M2",
+        severity: heldBack > 0 ? "medium" : "low",
+        title: `${nonFinal26.length} 26AS row(s) with booking status P/U/O (not yet creditable)`,
+        figures: { a: total26asTds, b: creditable26asTds, delta: heldBack },
+        remedy:
+          "Only status F (final) rows are credited by CPC. P = provisional (government deductor, awaiting PAO); U = unmatched challan; O = overbooked challan. Ask the deductor to correct their statement, or claim only the F rows now and revise once 26AS updates.",
+        noticePreempted: "143(1) adjustment",
+      });
+    }
+  } else {
+    checksSkipped.push({
+      id: "M2",
+      reason:
+        "needs form26asTds rows with a booking status (parse_form26as supplies it)",
+    });
   }
 
   return {

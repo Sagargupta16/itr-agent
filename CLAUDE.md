@@ -32,7 +32,7 @@ pnpm inspect              # MCP inspector UI
 ## Test
 
 ```
-pnpm test         # engine golden cases + in-memory MCP client round trips (121 tests)
+pnpm test         # engine golden cases + in-memory MCP client round trips (151 tests)
 pnpm lint         # biome
 pnpm typecheck    # two configs: tsconfig.json (src) + tsconfig.test.json (src + tests)
 ```
@@ -59,14 +59,19 @@ shows up at runtime.
 
 - **stdout is the MCP channel** -- all logging must go to stderr (`console.error`). One stray `console.log` breaks the protocol.
 - Rules key off TRANSACTION DATES, not just FY: 23-Jul-2024 (CG rate flip), 1-Apr-2023 (debt MF s50AA), 1-Oct-2024 (buyback deemed dividend). Keep date boundaries in the rule pack when those land.
-- 87A rebate NEVER offsets 111A/112A tax under the new regime (Finance Act 2025) -- the engine applies it to normal-income slab tax only, driven by `allowAgainst111A` / `allowAgainst112A` in the pack. A mutation test in `tests/engine.test.ts` flips `allowAgainst111A` on and asserts the answer changes, so the claim is enforced and not just documented.
+- 87A rebate NEVER offsets 111A/112A tax under the new regime (Finance Act 2025 second proviso) -- the engine applies it to normal-income slab tax only, driven by `allowAgainst111A` / `allowAgainst112A` in the pack. A mutation test in `tests/engine.test.ts` flips `allowAgainst111A` on and asserts the answer changes, so the claim is enforced and not just documented.
+- The 87A THRESHOLD tests TOTAL income in both regimes (`thresholdBasis: "totalIncome"`, pack 1.4.0). Pack 1.3.0 had the new regime on `normalIncome`, which over-rebated anyone whose gains pushed total income past 12L; the statute's first proviso says "total income" in both clause (a) and clause (b). The contrary reading is a real practitioner position, so it stays encodable and `compute_tax` names the reading in `disclaimers` whenever gains are present.
+- `parse_form26as`: TCS collectors carry TANs exactly like deductors, so a part-header reset alone does NOT keep TCS out of `tdsEntries`. Rows are split by section (206C* -> `tcsEntries`). Booking status is the second cell after the section; only F is creditable and `creditableTdsDeposited` says so. Current 26AS layout: Part I TDS, Part II 15G/15H TDS, Part VI TCS, Part VII refunds; SFT/challans moved to AIS.
+- `McpServer` version comes from `packageVersion()` (reads package.json next to data/). Never hardcode it again; it drifted to 0.3.0 while the package was 0.4.0.
+- `readDocument` has an extension allow-list (.txt for 26AS, .json/.txt for AIS) and refuses dotfiles. `path` is otherwise an arbitrary-file-read for a prompt-injected client.
 - The senior / super-senior basic exemption is a SLAB SET (`oldRegime.slabsSenior` / `slabsSuperSenior`), never an income deduction. Subtracting it from income under-taxes by a whole slab and mis-states total income; the age-band tests pin `taxableNormalIncome` for exactly this reason.
 - Surcharge marginal relief compares tax PLUS surcharge at the band threshold against the actual figure (via a notional recomputation on income rolled back to the threshold). Comparing surcharge alone leaves the full amount standing just past a band edge.
 - The 25%/37% surcharge bands exclude 111A/112/112A/dividend income (First Schedule Part I Para A), so a taxpayer past Rs 2 crore purely on gains stays in the 15% band.
 - SDK v2 has NOT shipped: as of 2026-09-06 npm's `latest` dist-tag for `@modelcontextprotocol/sdk` is still 1.30.0, with no 2.x published. When it lands it flips `registerTool` input schemas from raw zod shapes to `z.object()`, which is why the multi-field shapes are hoisted to module-level consts in `src/server.ts` (`taxInputShape`, `interest234Shape`, `hraShape`); single-purpose tool schemas stay inline at their registration. Forward-looking, not an imminent migration.
 - `data/` ships in the npm package (`files` field); `resolveDataDir()` in rulepack.ts probes both dist- and src-relative paths.
 - `server.json` (MCP registry manifest) carries the version TWICE -- top level and `packages[0].version` -- and both must equal `package.json` version and the release tag. `publish.yml` fails the release if they drift, or if `server.json` `name` stops matching `package.json` `mcpName`.
-- FY 2026-27 pack (Budget 2026): Form 16 becomes Form 130, HRA metros 4 -> 8, buyback reverts to capital gains. New JSON pack + `availableYears()` update, no engine changes expected.
+- FY 2026-27 pack: Form 16 becomes Form 130 and HRA metros go 4 -> 8 (Income-tax Act 2025 + Income-tax Rules 2026, effective 1 Apr 2026); buyback reverts to capital gains (Finance Act 2026). New JSON pack + `availableYears()` update, no engine changes expected.
+- Deadlines: `itr3_4_nonAudit` 2026-08-31 and `revised` 2027-03-31 are BOTH Finance Act 2026 and both correct -- a line-by-line review flagged them as wrong before the fact-check confirmed them. `deadlineCitations` in the pack carries the basis for each; keep it in step with `deadlines`.
 
 ## Repo-specific rules
 

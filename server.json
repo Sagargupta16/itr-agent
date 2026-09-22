@@ -3,7 +3,7 @@
   "name": "io.github.sagargupta16/itr-agent",
   "title": "itr-agent",
   "description": "Local-first Indian income tax filing agent: ITR form, tax computation, 26AS/AIS reconciliation",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "repository": {
     "url": "https://github.com/Sagargupta16/itr-agent",
     "source": "github",
@@ -14,7 +14,7 @@
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "itr-agent",
-      "version": "0.4.0",
+      "version": "0.5.0",
       "transport": {
         "type": "stdio"
       }

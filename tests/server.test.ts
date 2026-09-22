@@ -1,5 +1,5 @@
 import { createCipheriv, pbkdf2Sync, randomBytes } from "node:crypto";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -67,6 +67,45 @@ describe("itr-agent server", () => {
     };
     expect(["new", "old"]).toContain(sc.recommended);
     expect(sc.savings).toBeGreaterThanOrEqual(0);
+  });
+
+  it("compare_regimes honours employer NPS in BOTH regimes (the README example)", async () => {
+    // 18L CTC with 50K employer NPS: the new regime used to ignore it.
+    const client = await connectedClient();
+    const result = await client.callTool({
+      name: "compare_regimes",
+      arguments: { salaryIncome: 1800000, employerNps80CCD2: 50000 },
+    });
+    const sc = result.structuredContent as {
+      newRegime: {
+        employerNps80CCD2Allowed: number;
+        taxableNormalIncome: number;
+      };
+      oldRegime: { employerNps80CCD2Allowed: number };
+    };
+    expect(sc.newRegime.employerNps80CCD2Allowed).toBe(50000);
+    expect(sc.newRegime.taxableNormalIncome).toBe(1675000);
+    expect(sc.oldRegime.employerNps80CCD2Allowed).toBe(50000);
+  });
+
+  it("recommend_itr_form accepts the presumptive and 194N inputs", async () => {
+    const client = await connectedClient();
+    const result = await client.callTool({
+      name: "recommend_itr_form",
+      arguments: {
+        totalIncome: 1200000,
+        hasBusinessIncome: true,
+        presumptive: true,
+        presumptiveScheme: "44ADA",
+        presumptiveTurnover: 6000000,
+      },
+    });
+    const sc = result.structuredContent as {
+      recommended: string;
+      dueDateCitation: string;
+    };
+    expect(sc.recommended).toBe("ITR-3");
+    expect(sc.dueDateCitation).toContain("Finance Act 2026");
   });
 
   it("unknown fiscal year is a tool error, not a crash", async () => {
@@ -165,7 +204,7 @@ describe("itr-agent server", () => {
       const text = Array.isArray(result.content)
         ? JSON.stringify(result.content)
         : "";
-      expect(text).toContain("ABCXXXXXF");
+      expect(text).toContain("ABCXXXXXXF");
       expect(text).not.toContain("ABCDE1234F");
     } finally {
       await rm(dir, { recursive: true, force: true });
@@ -173,18 +212,51 @@ describe("itr-agent server", () => {
   });
 
   it("parse_form26as names the problem when handed a directory", async () => {
+    // The directory carries a .txt suffix so it clears the extension gate and
+    // reaches the stat() branch this test is about.
     const dir = await mkdtemp(join(tmpdir(), "itr-dir-"));
+    const asTxt = join(dir, "26AS.txt");
+    await mkdir(asTxt);
     try {
       const client = await connectedClient();
       const result = await client.callTool({
         name: "parse_form26as",
-        arguments: { path: dir },
+        arguments: { path: asTxt },
       });
       expect(result.isError).toBeTruthy();
       expect(JSON.stringify(result.content)).toContain("is a directory");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  });
+
+  it("parsers refuse paths outside their extension allow-list and dotfiles", async () => {
+    const client = await connectedClient();
+    for (const path of ["C:/Users/x/.ssh/id_rsa", "/etc/passwd", "C:/x/.env"]) {
+      const result = await client.callTool({
+        name: "parse_form26as",
+        arguments: { path },
+      });
+      expect(result.isError).toBeTruthy();
+      expect(JSON.stringify(result.content)).toContain("refusing to read");
+    }
+    const ais = await client.callTool({
+      name: "parse_ais",
+      arguments: { path: "C:/x/AIS.pdf", pan: "ABCDE1234F", dob: "01011990" },
+    });
+    expect(ais.isError).toBeTruthy();
+    expect(JSON.stringify(ais.content)).toContain(".json");
+  });
+
+  it("reports the package.json version, not a hardcoded one", async () => {
+    const server = createServer();
+    const client = new Client({ name: "test", version: "0.0.0" });
+    const [c, s] = InMemoryTransport.createLinkedPair();
+    await Promise.all([server.connect(s), client.connect(c)]);
+    const pkg = JSON.parse(
+      await readFile(new URL("../package.json", import.meta.url), "utf8"),
+    ) as { version: string };
+    expect(client.getServerVersion()?.version).toBe(pkg.version);
   });
 
   it("list_tax_years reports the supported years and deadlines", async () => {
@@ -398,19 +470,56 @@ describe("itr-agent server", () => {
       300000,
     );
 
+    // 80GG alone: no dummy HRA period needed any more.
+    const gg = await client.callTool({
+      name: "compute_hra",
+      arguments: {
+        eightyGG: { rentPaid: 200000, adjustedTotalIncome: 1000000 },
+      },
+    });
+    expect(gg.isError).toBeFalsy();
+    expect((gg.structuredContent as { deduction: number }).deduction).toBe(
+      60000,
+    );
+    const neither = await client.callTool({
+      name: "compute_hra",
+      arguments: {},
+    });
+    expect(neither.isError).toBeTruthy();
+
     const interest = await client.callTool({
       name: "compute_interest_234",
       arguments: {
         assessedTax: 100000,
         advanceTaxPaid: 0,
         monthsFor234B: 4,
+        monthsLateFiling: 2,
+        taxOutstandingFor234A: 50000,
       },
     });
     expect(interest.isError).toBeFalsy();
+    const isc = interest.structuredContent as {
+      section234A: { interest: number };
+      section234B: { interest: number };
+    };
+    expect(isc.section234B.interest).toBe(4000);
+    expect(isc.section234A.interest).toBe(1000);
+
+    // The misspelt legacy name still works.
+    const legacy = await client.callTool({
+      name: "compute_interest_234",
+      arguments: {
+        assessedTax: 100000,
+        advanceTaxPaid: 0,
+        monthsFor234B: 4,
+        monthsLateFiling: 2,
+        taxOutstandingForms234A: 50000,
+      },
+    });
     expect(
-      (interest.structuredContent as { section234B: { interest: number } })
-        .section234B.interest,
-    ).toBe(4000);
+      (legacy.structuredContent as { section234A: { interest: number } })
+        .section234A.interest,
+    ).toBe(1000);
 
     const rec = await client.callTool({
       name: "reconcile_documents",

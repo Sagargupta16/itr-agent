@@ -1,4 +1,5 @@
 import { readFile, stat } from "node:fs/promises";
+import { basename, extname } from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { scheduleAdvanceTax } from "./engine/advance-tax.js";
@@ -11,7 +12,12 @@ import {
   recommendItrForm,
 } from "./engine/itr-form.js";
 import { type ReconcileInput, reconcile } from "./engine/reconcile.js";
-import { availableYears, DEFAULT_FY, loadRulePack } from "./engine/rulepack.js";
+import {
+  availableYears,
+  DEFAULT_FY,
+  loadRulePack,
+  packageVersion,
+} from "./engine/rulepack.js";
 import {
   AisDecryptError,
   decryptAis,
@@ -31,11 +37,24 @@ const MAX_RUPEES = 1e12;
 // named, or as the tool's path error, which misdiagnoses a size problem.
 const MAX_DOC_BYTES = 64 * 1024 * 1024;
 
-/** Read a user-supplied document path, distinguishing missing from oversized. */
+/** Read a user-supplied document path, distinguishing missing from oversized.
+ * `allowedExtensions` narrows what the tool will open: the two parsers only
+ * ever need a .txt or a .json, and refusing anything else (dotfiles, keys,
+ * config) closes the arbitrary-file-read path a prompt-injected client could
+ * otherwise reach through `path`. The parsed output leaks little, but the
+ * first PAN-shaped token and any free-text cell would still come back. */
 async function readDocument(
   path: string,
   hint: string,
+  allowedExtensions: readonly string[],
 ): Promise<{ text: string } | { error: string }> {
+  const name = basename(path);
+  const ext = extname(name).toLowerCase();
+  if (name.startsWith(".") || !allowedExtensions.includes(ext)) {
+    return {
+      error: `refusing to read ${path}: this tool opens only ${allowedExtensions.join("/")} files. ${hint}`,
+    };
+  }
   try {
     const info = await stat(path);
     if (info.isDirectory()) {
@@ -92,7 +111,29 @@ const taxInputShape = {
     .max(MAX_RUPEES)
     .default(0)
     .describe(
-      "Old regime only: total Chapter VI-A deductions (80C, 80D, ...) in INR. Ignored under the new regime.",
+      "Old regime only: total Chapter VI-A deductions (80C, 80D, ...) in INR, EXCLUDING employer NPS (use employerNps80CCD2). Ignored under the new regime.",
+    ),
+  employerNps80CCD2: z
+    .number()
+    .min(0)
+    .max(MAX_RUPEES)
+    .default(0)
+    .describe(
+      "Employer's NPS contribution under s.80CCD(2) in INR. Allowed in BOTH regimes (the one Chapter VI-A deduction 115BAC keeps); capped at 14% of salary in the new regime, 10% (private) / 14% (government) in the old.",
+    ),
+  governmentEmployer: z
+    .boolean()
+    .default(false)
+    .describe(
+      "Central/State Government employer (raises the old-regime 80CCD(2) cap to 14%)",
+    ),
+  housePropertyLoss: z
+    .number()
+    .min(0)
+    .max(MAX_RUPEES)
+    .default(0)
+    .describe(
+      "Loss under the head house property as a POSITIVE number (e.g. s.24(b) home-loan interest on a self-occupied house). Old regime: set off against other heads up to Rs 2 lakh (s.71(3A)), rest carried forward. New regime: no inter-head set-off (s.115BAC(2)), reported as carried forward.",
     ),
   ageBand: z
     .enum(["below60", "senior", "superSenior"])
@@ -181,13 +222,21 @@ const interest234Shape = {
     .describe(
       "234A: months from the day after the due date to the date of filing (part month = full month). 0 means filed on time.",
     ),
-  taxOutstandingForms234A: z
+  taxOutstandingFor234A: z
     .number()
     .min(0)
     .max(MAX_RUPEES)
     .optional()
     .describe(
       "234A base: tax outstanding after TDS/TCS, advance tax, AND reliefs, in INR. Defaults to assessedTax minus advanceTaxPaid.",
+    ),
+  taxOutstandingForms234A: z
+    .number()
+    .min(0)
+    .max(MAX_RUPEES)
+    .optional()
+    .describe(
+      "Deprecated misspelling of taxOutstandingFor234A; still accepted.",
     ),
   fy: z
     .string()
@@ -243,8 +292,9 @@ const hraShape = {
     )
     .min(1)
     .max(12)
+    .optional()
     .describe(
-      "Homogeneous periods (amounts are per-period TOTALS, not monthly). Split whenever salary, rent, HRA, or city changes.",
+      "Homogeneous periods (amounts are per-period TOTALS, not monthly). Split whenever salary, rent, HRA, or city changes. Required unless eightyGG is supplied.",
     ),
   regime: z
     .enum(["old", "new"])
@@ -297,6 +347,9 @@ function toTaxInput(args: {
   stcg111A: number;
   ltcg112A: number;
   deductions: number;
+  employerNps80CCD2: number;
+  governmentEmployer: boolean;
+  housePropertyLoss: number;
   ageBand: "below60" | "senior" | "superSenior";
 }): TaxInput {
   return {
@@ -306,6 +359,9 @@ function toTaxInput(args: {
     stcg111A: args.stcg111A,
     ltcg112A: args.ltcg112A,
     deductions: args.deductions,
+    employerNps80CCD2: args.employerNps80CCD2,
+    governmentEmployer: args.governmentEmployer,
+    housePropertyLoss: args.housePropertyLoss,
     ageBand: args.ageBand,
   };
 }
@@ -326,10 +382,17 @@ function fail(message: string) {
   };
 }
 
+/** Mask a PAN as ABCXXXXXXF: first three and last character kept, six X's in
+ * between so the masked string stays 10 characters like the original. Both
+ * parsers use this so the text mirrors agree. */
+function maskPan(pan: string): string {
+  return `${pan.slice(0, 3)}XXXXXX${pan.slice(-1)}`;
+}
+
 export function createServer(): McpServer {
   const server = new McpServer({
     name: "itr-agent",
-    version: "0.3.0",
+    version: packageVersion(),
   });
 
   server.registerTool(
@@ -337,7 +400,7 @@ export function createServer(): McpServer {
     {
       title: "Compute Indian income tax",
       description:
-        "Deterministic Indian income tax computation for a fiscal year. Handles new/old regime slabs, standard deduction, 87A rebate with marginal relief, 111A/112A capital gains rates, surcharge (with the 15% cap on gains), and 4% cess. All arithmetic is done in code from a versioned rule pack -- never estimated.",
+        "Deterministic Indian income tax computation for a fiscal year. Handles new/old regime slabs, standard deduction, 87A rebate with marginal relief (threshold tested on TOTAL income per the statute; rebate never offsets 111A/112A tax under the new regime), employer NPS under 80CCD(2) in both regimes, house-property loss set-off (s.71(3A) cap; none under 115BAC), 111A/112A capital gains rates with the basic-exemption set-off, surcharge (with the 15% cap on gains and marginal relief), and 4% cess. All arithmetic is done in code from a versioned rule pack -- never estimated.",
       inputSchema: taxInputShape,
       annotations: READ_ONLY,
     },
@@ -404,7 +467,7 @@ export function createServer(): McpServer {
           .default(0)
           .describe("TDS/TCS expected to be deducted during the year in INR"),
         paidSoFar: z
-          .array(z.number().min(0))
+          .array(z.number().min(0).max(MAX_RUPEES))
           .max(4)
           .optional()
           .describe("Advance tax already paid per installment, in order"),
@@ -477,7 +540,7 @@ export function createServer(): McpServer {
     {
       title: "Parse Form 26AS (text export)",
       description:
-        "Parse the caret-delimited Form 26AS TEXT export from TRACES into structured TDS entries (deductor, TAN, section, amounts) with totals. Download the 'Text' format from TRACES -- it needs no password. PDF exports are not supported; the text export is more reliable.",
+        "Parse the caret-delimited Form 26AS TEXT export from TRACES into structured TDS entries (deductor, TAN, section, amounts, booking status) with totals, plus TCS rows (206C*) separated into tcsEntries. Reports creditableTdsDeposited (status F rows only) alongside the raw total. Download the 'Text' format from TRACES (the archive opens with your DOB as DDMMYYYY); PDF exports are not supported.",
       inputSchema: {
         path: z
           .string()
@@ -491,15 +554,14 @@ export function createServer(): McpServer {
       const read = await readDocument(
         args.path,
         "Provide the absolute path to the TRACES Text export (.txt).",
+        [".txt"],
       );
       if ("error" in read) return fail(read.error);
       const parsed = parseForm26AS(read.text);
       // PII hygiene: mask PAN in the text mirror; keep it structured.
       const masked = {
         ...parsed,
-        pan: parsed.pan
-          ? `${parsed.pan.slice(0, 3)}XXXXX${parsed.pan.slice(-1)}`
-          : null,
+        pan: parsed.pan ? maskPan(parsed.pan) : null,
       };
       return {
         content: [
@@ -553,6 +615,7 @@ export function createServer(): McpServer {
       const read = await readDocument(
         args.path,
         "Provide the absolute path to the AIS JSON download.",
+        [".json", ".txt"],
       );
       if ("error" in read) return fail(read.error);
       try {
@@ -568,8 +631,8 @@ export function createServer(): McpServer {
         // payload -- including free-text remarks and deductor names -- would
         // otherwise pass through the mask unchanged.
         const masked = JSON.stringify(parsed, null, 2).replace(
-          /\b([A-Za-z]{3})[A-Za-z]{2}\d{4}([A-Za-z])\b/g,
-          "$1XXXXXX$2",
+          /\b([A-Za-z]{5}\d{4}[A-Za-z])\b/g,
+          (pan) => maskPan(pan),
         );
         return {
           content: [{ type: "text" as const, text: masked }],
@@ -644,6 +707,7 @@ export function createServer(): McpServer {
             ? interest234A(
                 {
                   taxOnTotalIncomeNetOfPrepaid:
+                    args.taxOutstandingFor234A ??
                     args.taxOutstandingForms234A ??
                     Math.max(0, args.assessedTax - args.advanceTaxPaid),
                   months: args.monthsLateFiling,
@@ -712,6 +776,11 @@ export function createServer(): McpServer {
             disclaimers,
           });
         }
+        if (!args.periods || args.periods.length === 0) {
+          return fail(
+            "compute_hra needs `periods` (one per homogeneous stretch of salary/rent/HRA/city) unless `eightyGG` is supplied.",
+          );
+        }
         return ok({
           ...computeHra(args.periods as HraPeriod[], pack, args.regime),
           rulePackVersion: pack.rulePackVersion,
@@ -741,29 +810,47 @@ export function createServer(): McpServer {
                 .describe("TDS section code, e.g. 192, 194A"),
               amountPaid: z
                 .number()
+                .min(-MAX_RUPEES)
+                .max(MAX_RUPEES)
                 .describe(
                   "Amount paid or credited in INR (may be negative on a correction row)",
                 ),
               tdsDeposited: z
                 .number()
+                .min(-MAX_RUPEES)
+                .max(MAX_RUPEES)
                 .describe(
                   "TDS deposited in INR (may be negative on a correction row)",
+                ),
+              status: z
+                .string()
+                .max(2)
+                .nullable()
+                .optional()
+                .describe(
+                  "TRACES booking status from parse_form26as: F (final, creditable), P (provisional), U (unmatched), O (overbooked)",
                 ),
             }),
           )
           .max(2000)
           .optional()
-          .describe("TDS entries from parse_form26as"),
+          .describe(
+            "TDS entries from parse_form26as (tdsEntries, not tcsEntries)",
+          ),
         form16: z
           .array(
             z.object({
               tan: z.string().describe("Employer TAN from Form 16 Part A"),
               grossSalary: z
                 .number()
+                .min(0)
+                .max(MAX_RUPEES)
                 .optional()
                 .describe("GROSS salary per Form 16 Part B, before exemptions"),
               tdsDeposited: z
                 .number()
+                .min(0)
+                .max(MAX_RUPEES)
                 .describe("Total TDS deposited per Form 16 Part A, in INR"),
             }),
           )
@@ -773,15 +860,19 @@ export function createServer(): McpServer {
         ais: z
           .object({
             salaryByTan: z
-              .record(z.string(), z.number())
+              .record(z.string(), z.number().min(0).max(MAX_RUPEES))
               .optional()
               .describe("AIS gross salary keyed by employer TAN"),
             interestTotal: z
               .number()
+              .min(0)
+              .max(MAX_RUPEES)
               .optional()
               .describe("Total AIS interest across all banks, in INR"),
             dividendTotal: z
               .number()
+              .min(0)
+              .max(MAX_RUPEES)
               .optional()
               .describe("Total AIS dividend, in INR"),
           })
@@ -791,18 +882,26 @@ export function createServer(): McpServer {
           .object({
             tdsClaimed: z
               .number()
+              .min(0)
+              .max(MAX_RUPEES)
               .optional()
               .describe("Total TDS credit claimed in the draft return"),
             salaryDeclared: z
               .number()
+              .min(0)
+              .max(MAX_RUPEES)
               .optional()
               .describe("Gross salary declared in the draft return, in INR"),
             interestDeclared: z
               .number()
+              .min(0)
+              .max(MAX_RUPEES)
               .optional()
               .describe("Interest income declared, GROSS of 80TTA/80TTB"),
             dividendDeclared: z
               .number()
+              .min(0)
+              .max(MAX_RUPEES)
               .optional()
               .describe("Dividend declared, gross of TDS"),
           })
@@ -836,7 +935,7 @@ export function createServer(): McpServer {
     {
       title: "Recommend the ITR form",
       description:
-        "Recommend ITR-1/2/3/4 for an individual from income heads, residency, losses, and disqualifier flags, with rule-by-rule reasoning. Loss-continuity aware: brought-forward business/speculative losses force ITR-3 even with zero current-year business income (Schedule CFL). Returns the filing deadline and 234F late fee for the recommended form.",
+        "Recommend ITR-1/2/3/4 for an individual from income heads, residency, losses, and disqualifier flags, with rule-by-rule reasoning. Loss-continuity aware: brought-forward business/speculative losses force ITR-3 even with zero current-year business income (Schedule CFL). Checks the 44AD/44ADA turnover ceilings when presumptiveTurnover is supplied, and the AY 2026-27 two-house-property allowance. Returns the filing deadline with its statutory citation, the belated and revised deadlines, and the 234F late fee.",
       inputSchema: {
         fy: z
           .string()
@@ -859,9 +958,11 @@ export function createServer(): McpServer {
           .number()
           .int()
           .min(0)
-          .max(MAX_RUPEES)
+          .max(1000)
           .default(0)
-          .describe("Number of house properties with income or loss"),
+          .describe(
+            "Number of house properties with income or loss (ITR-1/ITR-4 admit up to two from AY 2026-27)",
+          ),
         stcg111A: z
           .number()
           .min(0)
@@ -892,6 +993,32 @@ export function createServer(): McpServer {
           .boolean()
           .default(false)
           .describe("Opting for presumptive taxation (44AD/44ADA/44AE)"),
+        presumptiveScheme: z
+          .enum(["44AD", "44ADA", "44AE"])
+          .optional()
+          .describe(
+            "Which presumptive section (drives the turnover ceiling check; defaults to 44AD)",
+          ),
+        presumptiveTurnover: z
+          .number()
+          .min(0)
+          .max(MAX_RUPEES)
+          .optional()
+          .describe(
+            "44AD turnover or 44ADA gross receipts in INR. Above Rs 2 crore (3 crore with cash receipts within 5%) / Rs 50 lakh (75 lakh) the scheme lapses and ITR-3 with audit applies. Omit to skip the check.",
+          ),
+        cashReceiptsWithin5Pct: z
+          .boolean()
+          .default(false)
+          .describe(
+            "Cash receipts are at most 5% of turnover/receipts (lifts the 44AD/44ADA ceiling to 3 crore / 75 lakh)",
+          ),
+        hasNonPresumptiveBusiness: z
+          .boolean()
+          .default(false)
+          .describe(
+            "Also has business/professional income OUTSIDE the presumptive scheme (ITR-4 cannot carry both)",
+          ),
         isPartnerInFirm: z
           .boolean()
           .default(false)
@@ -948,6 +1075,12 @@ export function createServer(): McpServer {
           .boolean()
           .default(false)
           .describe("Winnings from lottery, online games, or racehorses"),
+        tds194N: z
+          .boolean()
+          .default(false)
+          .describe(
+            "TDS was deducted under s.194N on cash withdrawals (rules out ITR-1)",
+          ),
       },
       annotations: READ_ONLY,
     },
@@ -963,6 +1096,14 @@ export function createServer(): McpServer {
           hasOtherCapitalGains: args.hasOtherCapitalGains,
           hasBusinessIncome: args.hasBusinessIncome,
           presumptive: args.presumptive,
+          ...(args.presumptiveScheme
+            ? { presumptiveScheme: args.presumptiveScheme }
+            : {}),
+          ...(args.presumptiveTurnover !== undefined
+            ? { presumptiveTurnover: args.presumptiveTurnover }
+            : {}),
+          cashReceiptsWithin5Pct: args.cashReceiptsWithin5Pct,
+          hasNonPresumptiveBusiness: args.hasNonPresumptiveBusiness,
           isPartnerInFirm: args.isPartnerInFirm,
           losses: {
             business: args.businessLoss,
@@ -976,6 +1117,7 @@ export function createServer(): McpServer {
           agriIncome: args.agriIncome,
           esopDeferral: args.esopDeferral,
           hasLotteryOrGamingIncome: args.hasLotteryOrGamingIncome,
+          tds194N: args.tds194N,
         };
         return ok(recommendItrForm(input, pack));
       } catch (err) {
@@ -1030,8 +1172,8 @@ export function createServer(): McpServer {
               "",
               "1. Timing, before anything else: call list_tax_years and check the current date against `deadlines`. If the due date for the FY has already passed, say plainly that this will be a BELATED return under s.139(4) (last date in `deadlines.belated`), quote the s.234F late fee from the tool output rather than from memory, and flag both consequences up front: s.234A interest runs on the tax still outstanding from the day after the due date, and s.80 forfeits the carry-forward of the current year's business, speculative and capital losses (a house-property loss survives, s.71B). Return to compute_interest_234 with monthsLateFiling once the tax figures exist.",
               "2. Residency and age band for the FY.",
-              "3. Income heads, one by one: salary (how many employers), house property (how many), capital gains (equity 111A/112A, anything else), business/professional incl. F&O or freelancing, other sources (interest, dividend).",
-              "4. Disqualifier sweep: foreign assets or RSUs/ESPP of a foreign employer, director role, unlisted shares, agricultural income over 5,000, ESOP deferral, lottery/gaming winnings.",
+              "3. Income heads, one by one: salary (how many employers; employer NPS under 80CCD(2), which counts in both regimes), house property (how many; any home-loan interest loss), capital gains (equity 111A/112A, anything else), business/professional incl. F&O or freelancing (if presumptive: which section and the year's turnover, since the 44AD/44ADA ceilings decide the form), other sources (interest, dividend).",
+              "4. Disqualifier sweep: foreign assets or RSUs/ESPP of a foreign employer, director role, unlisted shares, agricultural income over 5,000, ESOP deferral, lottery/gaming winnings, TDS under s.194N on cash withdrawals.",
               "5. Losses: brought-forward or current-year business/speculative/capital/house-property losses (this changes the form, and step 1 decides whether the current year's losses can still be carried forward).",
               "6. Call recommend_itr_form with everything gathered; explain the recommendation and what ruled out simpler forms.",
               "7. Ask for real amounts, then call compare_regimes (and compute_hra / list_deductions when the old regime is in play). Recommend the regime.",
@@ -1062,6 +1204,7 @@ export function createServer(): McpServer {
         supported: availableYears(),
         default: DEFAULT_FY,
         deadlines: pack.deadlines,
+        deadlineCitations: pack.deadlineCitations,
         rulePackVersion: pack.rulePackVersion,
         sources: pack.sources,
       });

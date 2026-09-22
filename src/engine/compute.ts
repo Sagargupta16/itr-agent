@@ -14,8 +14,20 @@ export interface TaxInput {
   /** LTCG taxable under 112A BEFORE the 1.25L exemption. */
   ltcg112A: number;
   /** Old regime only: total Chapter VI-A deductions actually claimable
-   * (already capped by the caller or via the deduction checklist tool). */
+   * (already capped by the caller or via the deduction checklist tool).
+   * Do NOT include employer NPS here; it has its own field below. */
   deductions: number;
+  /** Employer's NPS contribution under s.80CCD(2): the one Chapter VI-A
+   * deduction that survives s.115BAC(2), so it reduces income in BOTH regimes.
+   * Capped at the rule pack's percentage of salary (14% new regime; 10%
+   * private / 14% government old regime, `governmentEmployer` decides). */
+  employerNps80CCD2?: number;
+  governmentEmployer?: boolean;
+  /** Loss under the head house property (s.24(b) interest on a self-occupied
+   * home, or a let-out property's net loss) as a POSITIVE number. Set off
+   * against other heads up to the s.71(3A) cap; the excess is carried forward
+   * under s.71B and is reported, not set off. */
+  housePropertyLoss?: number;
   ageBand: AgeBand;
 }
 
@@ -26,7 +38,15 @@ export interface TaxBreakdown {
   grossIncome: number;
   standardDeduction: number;
   deductionsClaimed: number;
+  /** s.80CCD(2) actually allowed after the salary-percentage cap. */
+  employerNps80CCD2Allowed: number;
+  /** House-property loss set off this year (s.71(3A) cap applied). */
+  housePropertyLossSetOff: number;
+  /** House-property loss above the cap, carried forward under s.71B. */
+  housePropertyLossCarriedForward: number;
   taxableNormalIncome: number;
+  /** s.288A: total income (all heads) rounded to the nearest ten. */
+  totalIncome: number;
   taxableStcg111A: number;
   taxableLtcg112A: number;
   /** Unexhausted basic exemption set off against 111A/112A gains (provisos). */
@@ -48,6 +68,12 @@ const DISCLAIMERS = [
   "Not tax advice. Verify against the official income tax utility before filing.",
   "Assumes resident individual. NRI/RNOR rules differ.",
 ];
+
+/** Added only when special-rate gains are present under the new regime: the
+ * s.87A threshold reading changed in pack 1.4.0 and the taxpayer should know
+ * which one they are being computed under. */
+const DISCLAIMER_87A_TOTAL_INCOME =
+  "s.87A (new regime): the Rs 12 lakh threshold is tested on TOTAL income including 111A/112A gains, per the statute's first proviso; the rebate itself never offsets 111A/112A tax (second proviso). Some practitioners read the threshold as slab-rate income only. If your gains push total income past 12 lakh, the portal's figure is the one that counts.";
 
 function round(n: number): number {
   return Math.round(n);
@@ -102,13 +128,15 @@ function applyRebate87A(
   ltcgTax: number,
   rebate: Rebate87A,
 ): number {
-  // Old regime: the 5L threshold tests TOTAL income (incl. capital gains);
-  // new regime: 12L threshold tests normal income only (special-rate income
-  // excluded from both the test and the rebate).
+  // Old regime: the 5L threshold tests TOTAL income (incl. capital gains).
+  // New regime: the statute's first proviso says "total income" in both
+  // clause (a) and clause (b), so the 12L threshold tests total income too.
+  // `normalIncome` survives as an explicit contrary reading a pack may pick.
   const testIncome =
-    rebate.thresholdBasis === "totalIncome" ? totalIncome : normalIncome;
+    rebate.thresholdBasis === "normalIncome" ? normalIncome : totalIncome;
 
-  // Old regime 87A can offset 111A STCG tax; s.112A(6) bars 112A everywhere.
+  // The rebate can only ever be applied against these heads (old regime:
+  // slab tax + 111A; new regime: slab tax only, per the second proviso).
   const rebatableTax =
     normalSlabTax +
     (rebate.allowAgainst111A ? stcgTax : 0) +
@@ -116,9 +144,14 @@ function applyRebate87A(
 
   if (testIncome > rebate.incomeThreshold) {
     if (!rebate.marginalRelief) return 0;
-    // Marginal relief: tax payable cannot exceed income above the threshold.
+    // Clause (b): rebate = income-tax payable on TOTAL income minus the amount
+    // by which total income exceeds the threshold. "Income-tax payable" here is
+    // the whole pre-rebate figure, gains tax included, which is what makes the
+    // relief vanish faster when gains are present. The second proviso then
+    // caps the result at the slab-rate tax (`rebatableTax`).
     const excess = testIncome - rebate.incomeThreshold;
-    if (rebatableTax > excess) return rebatableTax - excess;
+    const taxOnTotal = normalSlabTax + stcgTax + ltcgTax;
+    if (taxOnTotal > excess) return Math.min(taxOnTotal - excess, rebatableTax);
     return 0;
   }
   return Math.min(rebatableTax, rebate.maxRebate);
@@ -371,19 +404,51 @@ export function computeTax(input: TaxInput, pack: RulePack): TaxBreakdown {
 
   const deductionsClaimed = input.regime === "old" ? input.deductions : 0;
 
-  // s.288A: the computed income is rounded to the nearest multiple of ten.
-  // Only the normal-income head is derived here; the gains figures come in as
-  // whole rupees from the caller's broker statement.
-  const taxableNormalIncome = roundToNearest(
-    Math.max(
-      0,
-      input.salaryIncome -
-        standardDeduction +
-        input.otherIncome -
-        deductionsClaimed,
-    ),
+  // s.80CCD(2) survives 115BAC(2). Cap at the pack's percentage of salary
+  // (salary here = the gross salary figure; the statute says basic + DA, which
+  // this engine does not split, so the cap is a ceiling not a floor).
+  const npsPct =
+    input.regime === "new"
+      ? pack.newRegime.employerNps80CCD2.pctOfSalary
+      : input.governmentEmployer
+        ? pack.oldRegime.employerNps80CCD2.pctOfSalaryGovernment
+        : pack.oldRegime.employerNps80CCD2.pctOfSalaryPrivate;
+  const employerNps80CCD2Allowed = Math.min(
+    Math.max(0, input.employerNps80CCD2 ?? 0),
+    input.salaryIncome * npsPct,
+  );
+
+  // s.71(3A): house-property loss set off against other heads only up to the
+  // cap; s.71B carries the rest forward for eight years against HP income.
+  // s.115BAC(2)(ii)(b) bars the inter-head set-off outright under the new
+  // regime, so there the whole loss is carried forward and nothing is set off.
+  const hpLoss = Math.max(0, input.housePropertyLoss ?? 0);
+  const hpCap =
+    input.regime === "old"
+      ? (pack.oldRegime.deductionCaps.housePropertyLossSetOff ?? 0)
+      : 0;
+  const housePropertyLossSetOff = Math.min(hpLoss, hpCap);
+  const housePropertyLossCarriedForward = hpLoss - housePropertyLossSetOff;
+
+  const normalBeforeRounding = Math.max(
+    0,
+    input.salaryIncome -
+      standardDeduction +
+      input.otherIncome -
+      housePropertyLossSetOff -
+      employerNps80CCD2Allowed -
+      deductionsClaimed,
+  );
+
+  // s.288A rounds TOTAL income (all heads) to the nearest ten. The gains come
+  // in as whole rupees from the caller's broker statement, so the rounding is
+  // absorbed by the normal head: round the total, then back the gains out.
+  const gains = input.stcg111A + input.ltcg112A;
+  const totalIncome = roundToNearest(
+    normalBeforeRounding + gains,
     pack.rounding.income288A,
   );
+  const taxableNormalIncome = Math.max(0, totalIncome - gains);
 
   const mix: IncomeMix = {
     normal: taxableNormalIncome,
@@ -409,6 +474,11 @@ export function computeTax(input: TaxInput, pack: RulePack): TaxBreakdown {
   const grossIncome =
     input.salaryIncome + input.otherIncome + input.stcg111A + input.ltcg112A;
 
+  const disclaimers =
+    input.regime === "new" && gains > 0
+      ? [...DISCLAIMERS, DISCLAIMER_87A_TOTAL_INCOME]
+      : DISCLAIMERS;
+
   return {
     fy: pack.fy,
     regime: input.regime,
@@ -416,7 +486,11 @@ export function computeTax(input: TaxInput, pack: RulePack): TaxBreakdown {
     grossIncome,
     standardDeduction,
     deductionsClaimed,
+    employerNps80CCD2Allowed: round(employerNps80CCD2Allowed),
+    housePropertyLossSetOff: round(housePropertyLossSetOff),
+    housePropertyLossCarriedForward: round(housePropertyLossCarriedForward),
     taxableNormalIncome,
+    totalIncome,
     taxableStcg111A: tax.taxableStcg111A,
     taxableLtcg112A: tax.taxableLtcg112A,
     basicExemptionSetOff: round(tax.basicExemptionSetOff),
@@ -431,6 +505,6 @@ export function computeTax(input: TaxInput, pack: RulePack): TaxBreakdown {
     totalTax,
     effectiveRatePct:
       grossIncome > 0 ? Math.round((totalTax / grossIncome) * 10000) / 100 : 0,
-    disclaimers: DISCLAIMERS,
+    disclaimers,
   };
 }

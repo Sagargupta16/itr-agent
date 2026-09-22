@@ -74,22 +74,92 @@ describe("computeTax new regime", () => {
     // 15,00,007 of income rounds to 15,00,010 before the slabs are applied.
     const r = computeTax({ ...base, otherIncome: 1500007 }, pack);
     expect(r.taxableNormalIncome).toBe(1500010);
+    expect(r.totalIncome).toBe(1500010);
     // 60,000 + 15% of 3,00,010 = 1,05,001.50; +4% cess = 1,09,201.56.
     expect(r.slabTax).toBe(105002);
     expect(r.totalTax).toBe(109200);
     expect(r.totalTax % 10).toBe(0);
   });
 
+  it("s.288A rounds TOTAL income, absorbing the odd rupees in the normal head", () => {
+    // 10,00,004 normal + 1,00,003 STCG = 11,00,007 total -> 11,00,010. The
+    // gains stay as reported (broker figure), so normal becomes 10,00,007.
+    const r = computeTax(
+      { ...base, otherIncome: 1000004, stcg111A: 100003 },
+      pack,
+    );
+    expect(r.totalIncome).toBe(1100010);
+    expect(r.taxableNormalIncome).toBe(1000007);
+  });
+
   it("87A rebate never offsets capital gains tax", () => {
-    // 8L normal income (within rebate) + LTCG: normal tax rebated, CG tax stays.
+    // 8L normal + 3L LTCG = 11L total income, inside the 12L threshold:
+    // the slab tax is rebated, the 112A tax is untouched (second proviso).
+    const r = computeTax(
+      { ...base, otherIncome: 800000, ltcg112A: 300000 },
+      pack,
+    );
+    expect(r.totalIncome).toBe(1100000);
+    expect(r.rebate87A).toBe(20000);
+    // LTCG: (3,00,000 - 1,25,000) * 12.5% = 21,875
+    expect(r.ltcgTax).toBe(21875);
+    expect(r.taxBeforeSurcharge).toBe(21875);
+  });
+
+  it("87A threshold tests TOTAL income: gains past 12L deny the rebate", () => {
+    // s.87A first proviso clause (a): "where the total income does not exceed
+    // twelve lakh rupees". 8L normal + 5L LTCG is 13L, so no rebate under (a),
+    // and clause (b) relief is nil because tax on total income (20,000 +
+    // 46,875) is below the 1L excess. Pack 1.3.0 tested normal income only and
+    // rebated the 20,000 here; the filing-season worked examples do not.
     const r = computeTax(
       { ...base, otherIncome: 800000, ltcg112A: 500000 },
       pack,
     );
-    expect(r.rebate87A).toBeGreaterThan(0);
-    // LTCG: (5,00,000 - 1,25,000) * 12.5% = 46,875
+    expect(r.totalIncome).toBe(1300000);
+    expect(r.rebate87A).toBe(0);
+    expect(r.slabTax).toBe(20000);
     expect(r.ltcgTax).toBe(46875);
-    expect(r.taxBeforeSurcharge).toBe(46875);
+    expect(r.taxBeforeSurcharge).toBe(66875);
+    expect(r.disclaimers.some((d) => d.includes("TOTAL income"))).toBe(true);
+  });
+
+  it("87A: 12L salary-equivalent plus 1.25L exempt LTCG still loses the rebate", () => {
+    // The published FY 2025-26 example: net salary 12,00,000 + LTCG 1,25,000
+    // (within the 112A exemption, so LTCG tax is nil) = total 13,25,000.
+    // Clause (b): tax on total income 60,000 < excess 1,25,000 -> rebate 0,
+    // payable 60,000 + 4% cess = 62,400.
+    const r = computeTax(
+      { ...base, salaryIncome: 1275000, ltcg112A: 125000 },
+      pack,
+    );
+    expect(r.totalIncome).toBe(1325000);
+    expect(r.rebate87A).toBe(0);
+    expect(r.ltcgTax).toBe(0);
+    expect(r.totalTax).toBe(62400);
+  });
+
+  it("87A marginal relief with gains measures excess from total income", () => {
+    // 12.1L normal + 1L STCG = 13.1L total. Tax on total = 61,500 + 20,000 =
+    // 81,500; excess over 12L = 1,10,000; 81,500 < 1,10,000 -> no relief.
+    const r = computeTax(
+      { ...base, otherIncome: 1210000, stcg111A: 100000 },
+      pack,
+    );
+    expect(r.rebate87A).toBe(0);
+    expect(r.taxBeforeSurcharge).toBe(81500);
+  });
+
+  it("a pack on the contrary normalIncome reading still works", () => {
+    // Kept as an explicit, documented alternative rather than deleted.
+    const alt = structuredClone(pack);
+    alt.newRegime.rebate87A.thresholdBasis = "normalIncome";
+    const r = computeTax(
+      { ...base, otherIncome: 800000, ltcg112A: 500000 },
+      alt,
+    );
+    expect(r.rebate87A).toBe(20000);
+    expect(r.ltcgTax).toBe(46875);
   });
 
   it("applies 111A at 20% and 112A at 12.5% above the 1.25L exemption", () => {
@@ -126,6 +196,77 @@ describe("computeTax old regime", () => {
     const r = computeTax({ ...base, regime: "old", otherIncome: 510000 }, pack);
     expect(r.rebate87A).toBe(0);
     expect(r.slabTax).toBe(14500);
+  });
+});
+
+describe("s.80CCD(2) employer NPS", () => {
+  it("reduces income under the NEW regime, capped at 14% of salary", () => {
+    // 18L salary, 50K employer NPS (within 14% = 2.52L): 18L - 75K - 50K = 16.75L
+    const r = computeTax(
+      { ...base, salaryIncome: 1800000, employerNps80CCD2: 50000 },
+      pack,
+    );
+    expect(r.employerNps80CCD2Allowed).toBe(50000);
+    expect(r.taxableNormalIncome).toBe(1675000);
+    // 60,000 + 15% of 4,00,000 + 20% of 75,000 = 1,35,000
+    expect(r.slabTax).toBe(135000);
+  });
+
+  it("caps at the pack percentage: 10% private / 14% government in the old regime", () => {
+    const priv = computeTax(
+      {
+        ...base,
+        regime: "old",
+        salaryIncome: 1000000,
+        employerNps80CCD2: 140000,
+      },
+      pack,
+    );
+    expect(priv.employerNps80CCD2Allowed).toBe(100000);
+    const govt = computeTax(
+      {
+        ...base,
+        regime: "old",
+        salaryIncome: 1000000,
+        employerNps80CCD2: 140000,
+        governmentEmployer: true,
+      },
+      pack,
+    );
+    expect(govt.employerNps80CCD2Allowed).toBe(140000);
+    const newRegime = computeTax(
+      { ...base, salaryIncome: 1000000, employerNps80CCD2: 200000 },
+      pack,
+    );
+    expect(newRegime.employerNps80CCD2Allowed).toBe(140000);
+  });
+});
+
+describe("house-property loss", () => {
+  it("old regime: set off against other heads up to Rs 2L (s.71(3A)), rest carried forward", () => {
+    const r = computeTax(
+      {
+        ...base,
+        regime: "old",
+        salaryIncome: 1500000,
+        housePropertyLoss: 250000,
+      },
+      pack,
+    );
+    expect(r.housePropertyLossSetOff).toBe(200000);
+    expect(r.housePropertyLossCarriedForward).toBe(50000);
+    // 15L - 50K SD - 2L = 12.5L
+    expect(r.taxableNormalIncome).toBe(1250000);
+  });
+
+  it("new regime: no inter-head set-off (s.115BAC(2)(ii)(b)), whole loss carried forward", () => {
+    const r = computeTax(
+      { ...base, salaryIncome: 1500000, housePropertyLoss: 150000 },
+      pack,
+    );
+    expect(r.housePropertyLossSetOff).toBe(0);
+    expect(r.housePropertyLossCarriedForward).toBe(150000);
+    expect(r.taxableNormalIncome).toBe(1425000);
   });
 });
 
