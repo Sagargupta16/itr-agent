@@ -30,6 +30,10 @@ overrides:
   # GHSA-2v37-7h3g-55p8 (high). Dev-only, same reasoning as postcss. Capped below
   # 4 because nanoid 4+ is ESM-only and postcss requires it as CJS.
   nanoid: '>=3.3.18 <4'
+  # postcss (via tsup and vite) resolves source-map-js 1.2.1, which carries
+  # GHSA-68fv-2mgg-jv7q (high). Dev-only, same reasoning as postcss. Capped below
+  # 2 to stay inside postcss's declared ^1.2.1 range.
+  source-map-js: '>=1.2.2 <2'
 # Nothing in this repo sets `minimumReleaseAge`, but a contributor's global pnpm
 # config can, and this list is what lets a fresh `pnpm install --frozen-lockfile`
 # resolve the exact versions the lockfile already pins. Refresh it to the
