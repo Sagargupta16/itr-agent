@@ -891,8 +891,8 @@ packages:
   fast-deep-equal@3.1.3:
     resolution: {integrity: sha512-f3qQ9oQy9j2AhBe/H9VC91wLmKBCCU/gDOnKNAYG5hswO7BLKj09Hc5HYNz9cGI++xlpDCIgDaitVs03ATR84Q==}
 
-  fast-uri@3.1.6:
-    resolution: {integrity: sha512-7Ical1vFEMr0onbVzEDIreM22I4khW+fzyQPwvAFWBp1iwdshSZRsL4jjRvPG9JP1uiqMHRto+YU6R2/CzDz5Q==}
+  fast-uri@3.1.8:
+    resolution: {integrity: sha512-GZMtZUTNRpOVIECoXwLNZS5xUGE+mVNbTB8h/7Rwh2TFWcBQiPzTgyZi05BF9UMZKkLJv8XBRJTlU7zg8+ZfMg==}
 
   fdir@6.5.0:
     resolution: {integrity: sha512-tIbYtZbucOs0BRGqPJkshJUYdL+SDH7dVM8gjy+ERp3WAUjLEFJE+02kanyHtwjWOnwrKYBiwAmM0p4kLJAnXg==}
@@ -946,8 +946,8 @@ packages:
     resolution: {integrity: sha512-T2UbfbBEF32wiepXIsMlTW9+dDYC6wMh/t/vYA4tuOMKqWz/n3vr1NFSxQiyP+zk2mXsoMA/i/7qV6LKut1t1A==}
     engines: {node: '>= 0.4'}
 
-  hono@4.13.5:
-    resolution: {integrity: sha512-O6+/eCYRkzzzy0rPWwKLiGBR1nFuUPZynnwjxN1MBA62NNqbT0wQEzQyK2gSO5yDIDB336sXQleAhOHrzlYyKw==}
+  hono@4.13.13:
+    resolution: {integrity: sha512-CQ46U0ZkAGmbT/4UxdzzGJpacP2IeKgY4a5/tOI9AABbpOMfK739wfDXmv1usCk+3RkKj1hQy4/fjhiwa2xlrA==}
     engines: {node: '>=16.9.0'}
 
   http-errors@2.0.1:
@@ -961,8 +961,8 @@ packages:
   inherits@2.0.4:
     resolution: {integrity: sha512-k/vGaX4/Yla3WzyMCvTQOXYeIHvqOKtnqBduzTHpzpQZzAskKMhZ2K+EnBiSM9zGSoIFeMpXKxa4dYeZIQqewQ==}
 
-  ip-address@10.7.0:
-    resolution: {integrity: sha512-BGFsyJd5mpXp3rK6jIdADLNgpJUK1jnjzvYF8lK+VyDab9JAmqN0YOKDdP17HlgKb2+ehPgDc8EtnRLbGCAMhA==}
+  ip-address@10.7.3:
+    resolution: {integrity: sha512-A1kdq/tSb5QjvKvAMgIoEvDBIgL7qaqVP/jkvSwYYRZ9iEzvPpopxp2wQfu3SuZRHtpHNxMn8Fs0bS+gf5Xmwg==}
     engines: {node: '>= 12'}
 
   ipaddr.js@1.9.1:
@@ -1187,8 +1187,8 @@ packages:
     resolution: {integrity: sha512-g50586zr4bZmwFiTlflMu8E0bDTb5I5gertgwAKmsdUlTQIhZtunzUlD1WSzwcVWPoAVpsrA6vlfCD7oXvRwgg==}
     engines: {node: ^10 || ^12 || >=14}
 
-  proxy-addr@2.0.7:
-    resolution: {integrity: sha512-llQsMLSUDUPT44jdrU/O37qlnifitDP+ZwrmmZcoSKyLKvtZxpyV0n2/bD/N4tBAAZ/gJEdZU7KMraoK1+XYAg==}
+  proxy-addr@2.0.8:
+    resolution: {integrity: sha512-5nnx0yGyVUcY6t9RnWcARWtwT9F1D8O9rt08htPvnd49W1IgZtmLkhu9WfMzQj1cFxjHIO6connUNVW5k7AVyQ==}
     engines: {node: '>= 0.10'}
 
   qs@6.16.0:
@@ -1610,9 +1610,9 @@ snapshots:
   '@esbuild/win32-x64@0.28.1':
     optional: true
 
-  '@hono/node-server@2.0.12(hono@4.13.5)':
+  '@hono/node-server@2.0.12(hono@4.13.13)':
     dependencies:
-      hono: 4.13.5
+      hono: 4.13.13
 
   '@jridgewell/gen-mapping@0.3.13':
     dependencies:
@@ -1630,7 +1630,7 @@ snapshots:
 
   '@modelcontextprotocol/sdk@1.30.0(zod@4.5.4)':
     dependencies:
-      '@hono/node-server': 2.0.12(hono@4.13.5)
+      '@hono/node-server': 2.0.12(hono@4.13.13)
       ajv: 8.20.0
       ajv-formats: 3.0.1(ajv@8.20.0)
       content-type: 1.0.5
@@ -1640,7 +1640,7 @@ snapshots:
       eventsource-parser: 3.1.0
       express: 5.2.1
       express-rate-limit: 8.5.2(express@5.2.1)
-      hono: 4.13.5
+      hono: 4.13.13
       jose: 6.2.3
       json-schema-typed: 8.0.2
       pkce-challenge: 5.0.1
@@ -1920,7 +1920,7 @@ snapshots:
   ajv@8.20.0:
     dependencies:
       fast-deep-equal: 3.1.3
-      fast-uri: 3.1.6
+      fast-uri: 3.1.8
       json-schema-traverse: 1.0.0
       require-from-string: 2.0.2
 
@@ -2072,7 +2072,7 @@ snapshots:
   express-rate-limit@8.5.2(express@5.2.1):
     dependencies:
       express: 5.2.1
-      ip-address: 10.7.0
+      ip-address: 10.7.3
 
   express@5.2.1:
     dependencies:
@@ -2095,7 +2095,7 @@ snapshots:
       on-finished: 2.4.1
       once: 1.4.0
       parseurl: 1.3.3
-      proxy-addr: 2.0.7
+      proxy-addr: 2.0.8
       qs: 6.16.0
       range-parser: 1.3.0
       router: 2.2.0
@@ -2109,7 +2109,7 @@ snapshots:
 
   fast-deep-equal@3.1.3: {}
 
-  fast-uri@3.1.6: {}
+  fast-uri@3.1.8: {}
 
   fdir@6.5.0(picomatch@4.0.5):
     optionalDependencies:
@@ -2167,7 +2167,7 @@ snapshots:
     dependencies:
       function-bind: 1.1.2
 
-  hono@4.13.5: {}
+  hono@4.13.13: {}
 
   http-errors@2.0.1:
     dependencies:
@@ -2183,7 +2183,7 @@ snapshots:
 
   inherits@2.0.4: {}
 
-  ip-address@10.7.0: {}
+  ip-address@10.7.3: {}
 
   ipaddr.js@1.9.1: {}
 
@@ -2337,7 +2337,7 @@ snapshots:
       picocolors: 1.1.1
       source-map-js: 1.2.1
 
-  proxy-addr@2.0.7:
+  proxy-addr@2.0.8:
     dependencies:
       forwarded: 0.2.0
       ipaddr.js: 1.9.1
