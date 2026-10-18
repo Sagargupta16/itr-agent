@@ -3,6 +3,25 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.5.1] - 2026-10-18
+
+A dependency and hygiene release. No computed figure, tool input or tool output changes; the 151-test suite passes unchanged.
+
+Note for whoever cuts the release: npm's `latest` for `itr-agent` is still 0.3.0 (checked 2026-10-18), because neither 0.4.0 nor 0.5.0 was ever tagged as a GitHub release, and `publish.yml` only fires on `release: published`. So `npx -y itr-agent` still serves the pre-0.4.0 engine (including the s.87A over-rebate that 0.5.0 fixed), and the server is still absent from registry.modelcontextprotocol.io. Publishing the `v0.5.1` release ships everything since 0.3.0 and runs the registry step.
+
+### Security
+
+- `@modelcontextprotocol/sdk` 1.30.0 -> 1.32.1, clearing GHSA-6qxp-vccf-f47h (high; affects `>=1.12.0 <1.31.0`): the SDK's OAuth client could send credentials to an authorization server chosen by the MCP server. itr-agent runs only the stdio server side and never the OAuth client, so it was not reachable here, but `pnpm audit` flagged it and it is a runtime dependency. `pnpm audit` is clean again
+- CI workflow sets `permissions: contents: read` at the top level. Neither job writes to the repo, and CodeQL's `actions/missing-workflow-permissions` (code scanning alerts #1 and #2) flagged both jobs for inheriting the default token scope
+
+### Changed
+
+- Dependencies to their latest stable releases: zod 4.6.7, Biome 2.5.15 (schema URL in `biome.json` follows), @types/node 26.6.5, and two majors, tsup 9.0.0 and Vitest 5.0.5. Lint, both typecheck configs, the full test suite and the build pass on all of them, and the stdio smoke test still returns 1,09,200 for 15 lakh of other income
+- The `esbuild >=0.28.1` override is gone: it existed because tsup 8 pinned `^0.27.0`, below the GHSA-g7r4-m6w7-qqqr fix, and tsup 9 declares `^0.28.2` itself. The other seven security overrides stay
+- `minimumReleaseAgeExclude` refreshed to the newly resolved versions (now including `tsup@9.0.0`; Vitest 5 resolves only `@vitest/mocker` and `@vitest/spy` as separate packages)
+- README: an Architecture section with a mermaid diagram of the three layers (stdio transport, MCP tool surface, pure engine + parsers over the rule pack) and a table of the design decisions behind them; the from-source install is one command per line so it also runs in Windows PowerShell 5.1, which has no `&&`
+- CLAUDE.md: the "SDK v2 has NOT shipped" note was wrong. v2 shipped on 2026-07-27 as split packages (`@modelcontextprotocol/server` is at 2.3.1); `@modelcontextprotocol/sdk` stays on the 1.x line, which is why its `latest` never showed a 2.x
+
 ## [0.5.0] - 2026-09-10
 
 A correctness release driven by a line-by-line review of every source file and a fact-check of every statutory constant against primary sources (Finance Acts 2025 and 2026, CBDT Notification 45/2026, the incometaxindia.gov.in section texts, the notified AY 2026-27 forms). The fact-check overturned two of the review's own findings: the pack's 31 August due date for non-audit ITR-3/ITR-4 and its 31 March revised-return date are both correct under Finance Act 2026, so they stay and now carry citations. It also confirmed three defects the review had only suspected.

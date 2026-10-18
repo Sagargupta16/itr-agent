@@ -5,10 +5,6 @@ overrides:
   # which carries GHSA-r28c-9q8g-f849 (path traversal). Dev-only -- postcss never
   # ships, `files` is dist + data -- but pin it so `pnpm audit` stays clean.
   postcss: '>=8.5.18'
-  # tsup pins esbuild ^0.27.0 but the fix for GHSA-g7r4-m6w7-qqqr is 0.28.1, so
-  # clearing it means stepping outside tsup's declared range. Verified: build and
-  # the 98-test suite pass on 0.28.1. Same dev-only reasoning as postcss.
-  esbuild: '>=0.28.1'
   # The MCP SDK resolves hono 4.12.27 (directly and via @hono/node-server), which
   # carries GHSA-f23p-vx2j-j53r, GHSA-79qm-7rj5-m7r9, GHSA-54fx-42gc-7vw4 and
   # GHSA-8j4g-w8fx-2239. Runtime -- the SDK is a real dependency -- so pin the fix.
@@ -40,23 +36,19 @@ overrides:
 # resolved versions on every dependency bump rather than dropping it: an entry
 # only ever matches the version it names, so a stale list is the same as no list.
 minimumReleaseAgeExclude:
-  - '@modelcontextprotocol/sdk@1.30.0'
-  - 'zod@4.5.4'
-  - '@types/node@26.4.1'
-  - '@biomejs/biome@2.5.12'
-  - '@biomejs/cli-darwin-arm64@2.5.12'
-  - '@biomejs/cli-darwin-x64@2.5.12'
-  - '@biomejs/cli-linux-arm64-musl@2.5.12'
-  - '@biomejs/cli-linux-arm64@2.5.12'
-  - '@biomejs/cli-linux-x64-musl@2.5.12'
-  - '@biomejs/cli-linux-x64@2.5.12'
-  - '@biomejs/cli-win32-arm64@2.5.12'
-  - '@biomejs/cli-win32-x64@2.5.12'
-  - 'vitest@4.1.11'
-  - '@vitest/expect@4.1.11'
-  - '@vitest/mocker@4.1.11'
-  - '@vitest/pretty-format@4.1.11'
-  - '@vitest/runner@4.1.11'
-  - '@vitest/snapshot@4.1.11'
-  - '@vitest/spy@4.1.11'
-  - '@vitest/utils@4.1.11'
+  - '@modelcontextprotocol/sdk@1.32.1'
+  - 'zod@4.6.7'
+  - '@types/node@26.6.5'
+  - '@biomejs/biome@2.5.15'
+  - '@biomejs/cli-darwin-arm64@2.5.15'
+  - '@biomejs/cli-darwin-x64@2.5.15'
+  - '@biomejs/cli-linux-arm64-musl@2.5.15'
+  - '@biomejs/cli-linux-arm64@2.5.15'
+  - '@biomejs/cli-linux-x64-musl@2.5.15'
+  - '@biomejs/cli-linux-x64@2.5.15'
+  - '@biomejs/cli-win32-arm64@2.5.15'
+  - '@biomejs/cli-win32-x64@2.5.15'
+  - 'tsup@9.0.0'
+  - 'vitest@5.0.5'
+  - '@vitest/mocker@5.0.5'
+  - '@vitest/spy@5.0.5'

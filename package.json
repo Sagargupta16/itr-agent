@@ -1,6 +1,6 @@
 {
   "name": "itr-agent",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Local-first MCP filing agent for Indian income tax: pick your ITR form, compute tax, reconcile 26AS/AIS, and walk the filing checklist -- entirely on your machine",
   "keywords": [
     "mcp",
@@ -44,14 +44,14 @@
     "prepublishOnly": "pnpm build"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.30.0",
-    "zod": "^4.5.4"
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.12",
-    "@types/node": "^26.4.1",
-    "tsup": "^8.5.1",
+    "@biomejs/biome": "^2.5.15",
+    "@types/node": "^26.6.5",
+    "tsup": "^9.0.0",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.11"
+    "vitest": "^5.0.5"
   }
 }
