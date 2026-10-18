@@ -15,6 +15,7 @@ pnpm test
 
 - **Tax constants live in `data/*.json` only, never in code.** Changing a constant requires a CHANGELOG entry citing the source (Finance Act section, CBDT circular, or incometax.gov.in page).
 - **Every calculator change ships with a golden test** -- a worked example from a published source with the exact expected rupee amount, cited in a comment.
+- **`pnpm validate` stays green.** It replays [`docs/validation.md`](docs/validation.md) against the built server. A new published case goes in `scripts/validation-cases.json` with its source, then `pnpm validate --write` regenerates the doc; never edit the doc by hand.
 - **The LLM never does arithmetic.** Tools return numbers computed by pure functions over the rule pack.
 - **stdout is the MCP channel.** All logging goes to stderr. One stray `console.log` breaks the protocol.
 - **Local-only is the product.** PRs adding network transports, telemetry, or cloud calls will be declined.

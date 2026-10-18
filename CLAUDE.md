@@ -18,7 +18,7 @@ Local-first MCP server for Indian income tax (FY 2025-26 / AY 2026-27): determin
 - **Framework**: @modelcontextprotocol/sdk 1.32 (stdio transport only), zod 4
 - **Database**: none -- rule packs are JSON files in `data/`
 - **Package manager**: pnpm
-- **Deploy target**: npm registry (`npx -y itr-agent`); .mcpb Desktop bundle planned
+- **Deploy target**: npm registry (`npx -y itr-agent`); `.mcpb` Claude Desktop bundle attached to each GitHub release (`pnpm bundle`)
 
 ## Run
 
@@ -27,6 +27,8 @@ pnpm install
 pnpm build
 node dist/index.js        # stdio MCP server
 pnpm inspect              # MCP inspector UI
+pnpm bundle               # build/itr-agent-<version>.mcpb (Claude Desktop bundle)
+node scripts/demo.mjs     # the README demo session against dist/
 ```
 
 ## Test
@@ -35,6 +37,7 @@ pnpm inspect              # MCP inspector UI
 pnpm test         # engine golden cases + in-memory MCP client round trips (151 tests)
 pnpm lint         # biome
 pnpm typecheck    # two configs: tsconfig.json (src) + tsconfig.test.json (src + tests)
+pnpm validate     # docs/validation.md cases against dist/ (run pnpm build first); --write regenerates
 ```
 
 `pnpm typecheck` runs twice on purpose: `tsconfig.json` carries the build's
@@ -53,6 +56,8 @@ shows up at runtime.
 - `data/fy2025-26.json` -- rule pack: EVERY tax constant lives here, never inline in code. `validatePack()` in rulepack.ts throws at load time if a pack is missing a section the engine reads, which is why the config fields are required rather than optional-with-a-code-fallback
 - `src/parsers/form26as.ts` -- caret-delimited TRACES text parser (tolerant, warnings[] over throws). Amounts are read POSITIONALLY from the cells after the section code, never by filtering for numeric-looking cells: a blank cell shifts that window and silently mis-assigns amount paid / TDS deducted / TDS deposited
 - `tests/engine.test.ts` -- golden cases pinned to published worked examples plus statute-pinned surcharge, age-band, and rounding cases
+- `scripts/validation-cases.json` -- source of `docs/validation.md`. Budget Speech rows are independent figures; statute rows carry their arithmetic in `working`. Any change to computed output must keep `pnpm validate` green, and the doc is generated, never hand-edited
+- `scripts/build-mcpb.mjs` -- the Desktop bundle. Inlines every dependency (`noExternal`) with a `createRequire` banner for ajv's CommonJS requires, stages outside the repo so a missed dependency fails the build, and generates the manifest from the live `tools/list`, so there is no hand-kept tool list to drift
 - `docs/v0.2-spec.md` -- researched design + statutory citations, NOT a description of shipped behaviour. It predates the v0.2 code and roughly half of it was never built (Form 16 PDF parsing, the AIS CSV fallback, the SFT lookup, reconcile H2/M2/L1/L2, the whitelist engine). Every section carries a status marker; the table at the top is the index. Update those markers whenever one of those items lands
 
 ## Gotchas
@@ -68,6 +73,8 @@ shows up at runtime.
 - Surcharge marginal relief compares tax PLUS surcharge at the band threshold against the actual figure (via a notional recomputation on income rolled back to the threshold). Comparing surcharge alone leaves the full amount standing just past a band edge.
 - The 25%/37% surcharge bands exclude 111A/112/112A/dividend income (First Schedule Part I Para A), so a taxpayer past Rs 2 crore purely on gains stays in the 15% band.
 - SDK v2 shipped on 2026-07-27 under NEW package names (`@modelcontextprotocol/server` + `@modelcontextprotocol/core`, 2.3.1 as of 2026-10-18), so `@modelcontextprotocol/sdk` stays on 1.x and its `latest` dist-tag never shows a 2.x -- checking that package alone is how an earlier note concluded v2 had not shipped. The v2 server depends only on zod and core, which would retire the hono/qs/ip-address/fast-uri runtime overrides. Migrating flips `registerTool` input schemas from raw zod shapes to `z.object()`, which is why the multi-field shapes are hoisted to module-level consts in `src/server.ts` (`taxInputShape`, `interest234Shape`, `hraShape`); single-purpose tool schemas stay inline at their registration. Forward-looking, not an imminent migration.
+- `bin` must be `dist/index.js`, never `./dist/index.js`: npm 11 printed "script name ... was invalid and removed" for the `./` form during the v0.5.1 publish run. CI's publish dry-run step fails on any npm auto-correction.
+- The v0.5.1 publish got E404 from npm on the PUT, so the npmjs.com trusted-publisher link for `publish.yml` (or a token) is not in place; npm `latest` is 0.3.0 until a publish succeeds.
 - `data/` ships in the npm package (`files` field); `resolveDataDir()` in rulepack.ts probes both dist- and src-relative paths.
 - `server.json` (MCP registry manifest) carries the version TWICE -- top level and `packages[0].version` -- and both must equal `package.json` version and the release tag. `publish.yml` fails the release if they drift, or if `server.json` `name` stops matching `package.json` `mcpName`.
 - FY 2026-27 pack: Form 16 becomes Form 130 and HRA metros go 4 -> 8 (Income-tax Act 2025 + Income-tax Rules 2026, effective 1 Apr 2026); buyback reverts to capital gains (Finance Act 2026). New JSON pack + `availableYears()` update, no engine changes expected.
