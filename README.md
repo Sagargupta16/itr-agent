@@ -84,7 +84,9 @@ Add to `claude_desktop_config.json`:
 
 ```bash
 git clone https://github.com/Sagargupta16/itr-agent
-cd itr-agent && pnpm install && pnpm build
+cd itr-agent
+pnpm install
+pnpm build
 node dist/index.js   # stdio server
 ```
 
@@ -129,6 +131,45 @@ Honest boundaries, so you know before you rely on it. [`docs/v0.2-spec.md`](docs
 - **The encrypted AIS file is not a safe place to store your data.** Its password is your PAN plus your date of birth, stretched with only 1,000 PBKDF2-SHA256 iterations. Once someone knows your PAN, every plausible DOB can be tried in about 4 seconds single-threaded (measured on a laptop: 0.11 ms per key derivation over a ~36,600-date space). That is the portal's scheme, not this tool's choice, and nothing here can strengthen it -- treat a downloaded AIS export as effectively unencrypted and delete it when you are done.
 - **`parse_ais` decryption is unproven on a live export.** The AIS password scheme is reverse-engineered from open-source utilities and verified against this repo's synthetic round-trip, never against a file the portal actually produced. If it fails, the error tells you to pass `password` explicitly or use the portal's CSV export, and [an issue report](https://github.com/Sagargupta16/itr-agent/issues) with your download date helps fix it. Every other tool is unaffected.
 - **Not tax advice.** Complex cases belong with a CA. Every output says so.
+
+## Architecture
+
+One stdio process, three layers, no network. The prompt sequences the interview, the MCP layer validates every input, and pure functions over a versioned JSON rule pack produce every number.
+
+```mermaid
+flowchart LR
+  client["MCP client<br/>(Claude Desktop / Claude Code)"]
+  subgraph proc["itr-agent (one local Node process)"]
+    direction LR
+    stdio["src/index.ts<br/>stdio transport"]
+    server["src/server.ts<br/>12 tools + file_my_itr prompt<br/>zod input schemas"]
+    subgraph engine["src/engine (pure functions)"]
+      compute["compute.ts<br/>slabs, 87A, surcharge, cess"]
+      form["itr-form.ts<br/>form picker + checklist"]
+      other["interest.ts / advance-tax.ts<br/>hra.ts / reconcile.ts"]
+    end
+    subgraph parsers["src/parsers"]
+      p26["form26as.ts<br/>TRACES text export"]
+      pais["ais.ts<br/>on-device AES decrypt"]
+    end
+    pack["rulepack.ts + data/fy2025-26.json<br/>every tax constant, validated at load"]
+  end
+  docs[("26AS / AIS files<br/>on your disk")]
+
+  client <-->|JSON-RPC over stdio| stdio --> server
+  server --> engine
+  server --> parsers
+  parsers -->|read-only, extension allow-list| docs
+  engine --> pack
+```
+
+| Decision | Why |
+| --- | --- |
+| stdio only, no HTTP transport | The documents carry PAN, salary and TDS data. No port means nothing to expose; CONTRIBUTING declines network transports outright |
+| Rule pack in JSON, not code | Tax law changes every Finance Act. A new FY is a new `data/fyYYYY-YY.json` plus golden tests; `validatePack()` refuses a pack missing any section the engine reads, so a missing rate fails loudly instead of falling back to a hardcoded one |
+| The LLM never computes | A figure a model produced cannot be audited or reproduced. The model asks questions and calls tools; every rupee figure is a deterministic function output, returned with `disclaimers` and the fiscal year it applied |
+| `structuredContent` beside text | Downstream tools (`reconcile_documents`) consume the parsed 26AS/AIS directly, while the text mirror masks PAN for the chat transcript |
+| CI asserts computed figures | On Ubuntu and Windows across Node 22/24/26, the smoke test boots `dist/index.js`, sends JSON-RPC, and checks 12.75L salary = Rs 0 and 15L other income = Rs 1,09,200. A separate job installs the packed npm tarball and repeats the 1,09,200 check as a user would run it |
 
 ## Design principles
 

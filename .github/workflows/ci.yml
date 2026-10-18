@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
 
+# Neither job writes anything back to the repo; read-only GITHUB_TOKEN.
+permissions:
+  contents: read
+
 jobs:
   test:
     # Matrix because contributors run Windows (CRLF checkouts, backslash paths in
