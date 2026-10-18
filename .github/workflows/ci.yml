@@ -34,6 +34,11 @@ jobs:
       - run: pnpm test
       - run: pnpm build
 
+      # docs/validation.md: every published and hand-worked case, run through
+      # the built server. Fails on a mismatch or when the committed table is
+      # stale, so the doc can never claim a figure the engine does not produce.
+      - run: pnpm validate
+
       # A tools/list grep only proves the process booted. Assert real computed
       # figures end to end: 12.75L salary comes out at zero tax (75K standard
       # deduction brings it to 12L, then the 87A rebate clears it), and 15L of
@@ -129,6 +134,20 @@ jobs:
             exit 1
           fi
 
+      # npm 11 rewrites package.json at publish time and drops what it thinks
+      # is invalid: the v0.5.1 publish run printed "bin[itr-agent] script name
+      # dist/index.js was invalid and removed" for "./dist/index.js". The packed
+      # tarball keeps its own copy of the entry, so the install test below
+      # cannot see it; fail on any auto-correction here instead.
+      - name: Publish dry run makes no manifest corrections
+        run: |
+          out=$(npm publish --dry-run --ignore-scripts 2>&1)
+          if echo "$out" | grep -q "auto-corrected"; then
+            echo "$out" | grep -A5 "auto-corrected" >&2
+            exit 1
+          fi
+          echo "ok npm publish would ship package.json unmodified"
+
       - name: Install the tarball and run it as a user would
         run: |
           TARBALL=$(realpath itr-agent-*.tgz)
@@ -150,3 +169,47 @@ jobs:
             }
             console.log("ok installed tarball computes 1,09,200");
           ' "$out"
+
+  mcpb:
+    # The one-click Claude Desktop bundle inlines every dependency, so it has to
+    # run with no node_modules anywhere above it. Unpack it into the runner's
+    # temp dir and compute a figure from there.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm bundle
+
+      - name: Run the unpacked bundle as Claude Desktop would
+        run: |
+          BUNDLE=$(realpath build/itr-agent-*.mcpb)
+          DEST="$RUNNER_TEMP/itr-agent-mcpb"
+          mkdir -p "$DEST" && cd "$DEST"
+          unzip -q "$BUNDLE"
+          test ! -e node_modules
+          out=$(printf '%s\n%s\n%s\n' \
+            '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"0"}}}' \
+            '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+            '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"compute_tax","arguments":{"regime":"new","otherIncome":1500000}}}' \
+            | node server/index.js 2>/dev/null)
+          node -e '
+            const msg = process.argv[1].split("\n").filter(Boolean).map(JSON.parse)
+              .find((m) => m.id === 2);
+            const total = msg && msg.result && msg.result.structuredContent
+              && msg.result.structuredContent.totalTax;
+            if (total !== 109200) {
+              throw new Error(`unpacked bundle computed ${total}, expected 109200`);
+            }
+            console.log("ok unpacked .mcpb computes 1,09,200");
+          ' "$out"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: itr-agent-mcpb
+          path: build/*.mcpb
+          if-no-files-found: error

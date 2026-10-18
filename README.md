@@ -18,6 +18,14 @@ Claude: [recommend_itr_form] Foreign assets (Schedule FA) rule out ITR-1: you fi
         ITR-2, due 2026-07-31. Next: how many employers this year?
 ```
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/demo-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="docs/demo-light.svg">
+  <img width="600" src="docs/demo-dark.svg" alt="Terminal animation of five tool calls against the built server. recommend_itr_form with foreign assets: ITR-2, due 2026-07-31, ITR-1 ruled out because foreign assets need Schedule FA. compare_regimes on 18L salary with 3.75L deductions: new Rs 1,50,800 vs old Rs 2,34,000, new saves Rs 83,200. compute_tax on 12.75L salary: Rs 0 after a Rs 60,000 rebate. The same salary plus 1.25L LTCG: Rs 62,400, because total income of Rs 13,25,000 loses the 87A rebate. schedule_advance_tax on 2.4L tax with 1.8L TDS: Jun Rs 9,000, Sep Rs 18,000, Dec Rs 18,000, Mar Rs 15,000.">
+</picture>
+
+Those are the calls Claude makes during the interview, sent to the built server by [`scripts/demo.mjs`](scripts/demo.mjs). Every figure in the animation is one that run printed.
+
 ## Why
 
 Every Indian tax tool wants your data on their servers. itr-agent flips it: your documents stay local, the LLM never does arithmetic, and every number comes from a versioned rule pack you can audit. The agent layer drives the interview; the deterministic engine does the math.
@@ -80,6 +88,10 @@ Add to `claude_desktop_config.json`:
 }
 ```
 
+### Claude Desktop, one click
+
+From v0.5.2, every [GitHub release](https://github.com/Sagargupta16/itr-agent/releases) carries `itr-agent-<version>.mcpb` and its `.sha256`. The bundle inlines the server and its dependencies into one file, so there is no npm or `npx` step: double-click it, or use Settings > Extensions > Install Extension in Claude Desktop. It needs Node 22 or later, like the npm package. `pnpm bundle` builds the same file locally into `build/`.
+
 ### From source
 
 ```bash
@@ -116,6 +128,12 @@ The pack's `deadlines.itr1_2` is 2026-07-31 (s.139(1) Explanation 2(c)). `deadli
 **Revising a filed return.** Finance Act 2026 substituted s.139(5): a revised return may now be filed any time before the end of the AY (`deadlines.revised`, 2027-03-31), no longer three months before it. A revision filed after `deadlines.revisedWithoutFee234I` (2026-12-31) attracts the new s.234I fee; its tiers are not in the pack because no primary source for them was found, so read the amount off the portal.
 
 Not modeled, deliberately: whether a belated business filer keeps the old-regime election (s.115BAC(6) / Form 10-IEA is due on or before the s.139(1) date). Ask a CA before relying on either answer.
+
+## Validation
+
+[`docs/validation.md`](docs/validation.md) runs 20 cases (58 figures) through the built server and puts each next to its source. Nine come from the Finance Minister's own table in the [Budget Speech 2025-26](https://www.indiabudget.gov.in/doc/bspeech/bs2025_26.pdf) (Annexure to Part-B, printed page 47): slab tax, rebate and tax after rebate from 8 to 50 lakh. The other eleven are worked by hand from the statute, with the arithmetic in the table: the 87A marginal relief and its crossover, gains that cost the rebate, the old-regime age bands, and the 10% surcharge with its own marginal relief. All 58 match. CI runs `pnpm validate` on every leg and fails if a figure stops matching or the committed table goes stale.
+
+It is not a comparison with the e-Filing portal's own calculator, which refuses automated browsers. A case from a CA-prepared computation is the most useful pull request this repo can get.
 
 ## Scope and limitations
 
@@ -169,7 +187,7 @@ flowchart LR
 | Rule pack in JSON, not code | Tax law changes every Finance Act. A new FY is a new `data/fyYYYY-YY.json` plus golden tests; `validatePack()` refuses a pack missing any section the engine reads, so a missing rate fails loudly instead of falling back to a hardcoded one |
 | The LLM never computes | A figure a model produced cannot be audited or reproduced. The model asks questions and calls tools; every rupee figure is a deterministic function output, returned with `disclaimers` and the fiscal year it applied |
 | `structuredContent` beside text | Downstream tools (`reconcile_documents`) consume the parsed 26AS/AIS directly, while the text mirror masks PAN for the chat transcript |
-| CI asserts computed figures | On Ubuntu and Windows across Node 22/24/26, the smoke test boots `dist/index.js`, sends JSON-RPC, and checks 12.75L salary = Rs 0 and 15L other income = Rs 1,09,200. A separate job installs the packed npm tarball and repeats the 1,09,200 check as a user would run it |
+| CI asserts computed figures | On Ubuntu and Windows across Node 22/24/26, the smoke test boots `dist/index.js`, sends JSON-RPC, and checks 12.75L salary = Rs 0 and 15L other income = Rs 1,09,200. A separate job installs the packed npm tarball and repeats the 1,09,200 check as a user would run it. `pnpm validate` replays all 58 validation figures on every leg, and a third job unpacks the `.mcpb` bundle where no `node_modules` can reach it and repeats the check again |
 
 ## Design principles
 
@@ -187,8 +205,9 @@ flowchart LR
 - [x] **v0.3** -- renamed to **itr-agent**; `recommend_itr_form` with loss-continuity awareness ([#3](https://github.com/Sagargupta16/itr-agent/issues/3)), `filing_checklist`, the `file_my_itr` guided interview prompt
 - [x] **v0.4** -- engine correctness pass (senior/super-senior slab sets, surcharge marginal relief on tax + surcharge, the s.111A/112A basic-exemption set-off, s.288A/288B rounding), positional 26AS amount extraction, s.234A + the s.234B(2) payment ladder, reconcile M4/M5, belated-filing guidance, security pins on the SDK's transitives, npm publishing via OIDC with provenance, and an MCP registry manifest ([`server.json`](server.json))
 - [x] **v0.5** -- fact-check of every constant against primary sources; s.87A on total income; AY 2026-27 form changes (two house properties, Schedule AL at 1 crore, Finance Act 2026 deadlines with citations); employer NPS and house-property loss inputs; 44AD/44ADA ceilings and s.194N in the form picker; 26AS booking status, TCS separation and reconcile M2; path allow-list on the parsers
+- [x] **v0.5.2** -- a validation table against the Budget Speech 2025-26 figures and hand-worked statute cases, enforced in CI; the `.mcpb` one-click Claude Desktop bundle, attached to each release; a README demo rendered from a real stdio session
 - [ ] **v0.6** (priorities validated against a real AY 2026-27 filing) -- `compute_loss_setoff` (BFLA/CFL engine, [#4](https://github.com/Sagargupta16/itr-agent/issues/4)), `parse_form16` (TRACES PDF), broker capital-gains parsers -- Groww first, then Zerodha ([#7](https://github.com/Sagargupta16/itr-agent/issues/7))
-- [ ] **v0.7** -- `compute_schedule_fa` (foreign assets/RSU, Rule 115 rates, [#5](https://github.com/Sagargupta16/itr-agent/issues/5)), portal quirks playbook ([#6](https://github.com/Sagargupta16/itr-agent/issues/6)), mutual fund CAS via casparser, draft ITR JSON export, `.mcpb` one-click Claude Desktop bundle
+- [ ] **v0.7** -- `compute_schedule_fa` (foreign assets/RSU, Rule 115 rates, [#5](https://github.com/Sagargupta16/itr-agent/issues/5)), portal quirks playbook ([#6](https://github.com/Sagargupta16/itr-agent/issues/6)), mutual fund CAS via casparser, draft ITR JSON export
 
 ## Development
 
@@ -197,6 +216,9 @@ pnpm install
 pnpm test          # vitest: engine golden files + in-memory MCP client tests
 pnpm build
 pnpm inspect       # MCP inspector against dist/index.js
+pnpm validate      # docs/validation.md cases against the built server; --write regenerates it
+pnpm bundle        # build/itr-agent-<version>.mcpb, the Claude Desktop bundle
+node scripts/demo.mjs   # the README demo session
 ```
 
 ## Contributing

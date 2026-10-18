@@ -1,0 +1,236 @@
+{
+  "sources": {
+    "budget-speech": {
+      "title": "Budget Speech 2025-26, Annexure to Part-B, para 2 (Rebate on income-tax), printed page 47 (PDF page 51)",
+      "url": "https://www.indiabudget.gov.in/doc/bspeech/bs2025_26.pdf",
+      "note": "The Finance Minister's own table of new-regime tax at sample incomes. 'Income' in that table is total income, so the cases pass it as otherIncome (no standard deduction). Its 'Proposed' column is slab tax, 'Rebate benefit' is the s.87A rebate, and 'Tax after rebate' is tax before surcharge and cess."
+    },
+    "statute": {
+      "title": "Hand computation from the Finance Act 2025 First Schedule, s.87A, s.111A, s.112A, s.288A and s.288B",
+      "url": "https://www.indiabudget.gov.in/budget2025-26/doc/memo.pdf",
+      "note": "Worked by hand from the rates and provisos, with the arithmetic in the Working column. These are not independent of the author the way the Budget Speech rows are: they check that the engine does what the statute says, not that a second party agrees."
+    }
+  },
+  "cases": [
+    {
+      "id": "bs-8l",
+      "source": "budget-speech",
+      "label": "8 lakh total income, new regime",
+      "tool": "compute_tax",
+      "args": { "regime": "new", "otherIncome": 800000 },
+      "expect": {
+        "slabTax": 20000,
+        "rebate87A": 20000,
+        "taxBeforeSurcharge": 0
+      }
+    },
+    {
+      "id": "bs-9l",
+      "source": "budget-speech",
+      "label": "9 lakh total income, new regime",
+      "tool": "compute_tax",
+      "args": { "regime": "new", "otherIncome": 900000 },
+      "expect": {
+        "slabTax": 30000,
+        "rebate87A": 30000,
+        "taxBeforeSurcharge": 0
+      }
+    },
+    {
+      "id": "bs-10l",
+      "source": "budget-speech",
+      "label": "10 lakh total income, new regime",
+      "tool": "compute_tax",
+      "args": { "regime": "new", "otherIncome": 1000000 },
+      "expect": {
+        "slabTax": 40000,
+        "rebate87A": 40000,
+        "taxBeforeSurcharge": 0
+      }
+    },
+    {
+      "id": "bs-11l",
+      "source": "budget-speech",
+      "label": "11 lakh total income, new regime",
+      "tool": "compute_tax",
+      "args": { "regime": "new", "otherIncome": 1100000 },
+      "expect": {
+        "slabTax": 50000,
+        "rebate87A": 50000,
+        "taxBeforeSurcharge": 0
+      }
+    },
+    {
+      "id": "bs-12l",
+      "source": "budget-speech",
+      "label": "12 lakh total income, new regime",
+      "tool": "compute_tax",
+      "args": { "regime": "new", "otherIncome": 1200000 },
+      "expect": {
+        "slabTax": 60000,
+        "rebate87A": 60000,
+        "taxBeforeSurcharge": 0
+      }
+    },
+    {
+      "id": "bs-16l",
+      "source": "budget-speech",
+      "label": "16 lakh total income, new regime",
+      "tool": "compute_tax",
+      "args": { "regime": "new", "otherIncome": 1600000 },
+      "expect": {
+        "slabTax": 120000,
+        "rebate87A": 0,
+        "taxBeforeSurcharge": 120000
+      }
+    },
+    {
+      "id": "bs-20l",
+      "source": "budget-speech",
+      "label": "20 lakh total income, new regime",
+      "tool": "compute_tax",
+      "args": { "regime": "new", "otherIncome": 2000000 },
+      "expect": {
+        "slabTax": 200000,
+        "rebate87A": 0,
+        "taxBeforeSurcharge": 200000
+      }
+    },
+    {
+      "id": "bs-24l",
+      "source": "budget-speech",
+      "label": "24 lakh total income, new regime",
+      "tool": "compute_tax",
+      "args": { "regime": "new", "otherIncome": 2400000 },
+      "expect": {
+        "slabTax": 300000,
+        "rebate87A": 0,
+        "taxBeforeSurcharge": 300000
+      }
+    },
+    {
+      "id": "bs-50l",
+      "source": "budget-speech",
+      "label": "50 lakh total income, new regime",
+      "tool": "compute_tax",
+      "args": { "regime": "new", "otherIncome": 5000000 },
+      "expect": {
+        "slabTax": 1080000,
+        "rebate87A": 0,
+        "taxBeforeSurcharge": 1080000
+      }
+    },
+    {
+      "id": "st-salary-1275k",
+      "source": "statute",
+      "label": "12.75 lakh salary, new regime",
+      "tool": "compute_tax",
+      "args": { "regime": "new", "salaryIncome": 1275000 },
+      "working": "12,75,000 - 75,000 standard deduction = 12,00,000. Slab tax 60,000, fully rebated under s.87A because total income does not exceed 12,00,000.",
+      "expect": {
+        "taxableNormalIncome": 1200000,
+        "rebate87A": 60000,
+        "totalTax": 0
+      }
+    },
+    {
+      "id": "st-relief-1210k",
+      "source": "statute",
+      "label": "12.10 lakh income, new regime (87A marginal relief)",
+      "tool": "compute_tax",
+      "args": { "regime": "new", "otherIncome": 1210000 },
+      "working": "Slab tax 60,000 + 15% of 10,000 = 61,500. s.87A first proviso clause (b) caps tax at the income above 12,00,000, i.e. 10,000. Cess 4% = 400.",
+      "expect": {
+        "slabTax": 61500,
+        "taxBeforeSurcharge": 10000,
+        "totalTax": 10400
+      }
+    },
+    {
+      "id": "st-relief-past-1270590",
+      "source": "statute",
+      "label": "12,70,590 income, new regime (just past the relief crossover)",
+      "tool": "compute_tax",
+      "args": { "regime": "new", "otherIncome": 1270590 },
+      "working": "Slab tax 60,000 + 15% of 70,590 = 70,588.50, below the 70,590 excess, so no relief. Plus 4% cess = 73,412.04, rounded under s.288B to 73,410.",
+      "expect": { "rebate87A": 0, "totalTax": 73410 }
+    },
+    {
+      "id": "st-15l",
+      "source": "statute",
+      "label": "15 lakh income, new regime",
+      "tool": "compute_tax",
+      "args": { "regime": "new", "otherIncome": 1500000 },
+      "working": "60,000 + 15% of 3,00,000 = 1,05,000. Plus 4% cess 4,200 = 1,09,200.",
+      "expect": { "slabTax": 105000, "cess": 4200, "totalTax": 109200 }
+    },
+    {
+      "id": "st-ltcg-loses-rebate",
+      "source": "statute",
+      "label": "12.75 lakh salary + 1.25 lakh LTCG, new regime",
+      "tool": "compute_tax",
+      "args": { "regime": "new", "salaryIncome": 1275000, "ltcg112A": 125000 },
+      "working": "Total income 12,00,000 + 1,25,000 = 13,25,000 is past 12,00,000, so no rebate under clause (a). Clause (b): tax 60,000 is below the 1,25,000 excess, so no relief either. LTCG is inside the 1,25,000 s.112A exemption. 60,000 + 4% cess = 62,400.",
+      "expect": {
+        "totalIncome": 1325000,
+        "rebate87A": 0,
+        "ltcgTax": 0,
+        "totalTax": 62400
+      }
+    },
+    {
+      "id": "st-rebate-not-on-ltcg",
+      "source": "statute",
+      "label": "8 lakh income + 3 lakh LTCG, new regime",
+      "tool": "compute_tax",
+      "args": { "regime": "new", "otherIncome": 800000, "ltcg112A": 300000 },
+      "working": "Total income 11,00,000, so the 20,000 slab tax is rebated. The rebate never offsets 112A tax (second proviso): 12.5% of (3,00,000 - 1,25,000) = 21,875. Plus 4% cess 875 = 22,750.",
+      "expect": { "rebate87A": 20000, "ltcgTax": 21875, "totalTax": 22750 }
+    },
+    {
+      "id": "st-old-10l",
+      "source": "statute",
+      "label": "10 lakh income, old regime, below 60",
+      "tool": "compute_tax",
+      "args": { "regime": "old", "otherIncome": 1000000 },
+      "working": "5% of 2,50,000 = 12,500, plus 20% of 5,00,000 = 1,00,000, plus 30% of 0 = 1,12,500. Plus 4% cess 4,500 = 1,17,000.",
+      "expect": { "slabTax": 112500, "totalTax": 117000 }
+    },
+    {
+      "id": "st-old-senior-10l",
+      "source": "statute",
+      "label": "10 lakh income, old regime, senior (60-79)",
+      "tool": "compute_tax",
+      "args": { "regime": "old", "otherIncome": 1000000, "ageBand": "senior" },
+      "working": "Senior slab set exempts 3,00,000: 5% of 2,00,000 = 10,000, plus 20% of 5,00,000 = 1,00,000 = 1,10,000. Plus 4% cess 4,400 = 1,14,400.",
+      "expect": { "slabTax": 110000, "totalTax": 114400 }
+    },
+    {
+      "id": "st-old-5l",
+      "source": "statute",
+      "label": "5 lakh income, old regime",
+      "tool": "compute_tax",
+      "args": { "regime": "old", "otherIncome": 500000 },
+      "working": "5% of 2,50,000 = 12,500, fully rebated under s.87A (old regime: up to Rs 12,500 where total income does not exceed 5,00,000).",
+      "expect": { "slabTax": 12500, "rebate87A": 12500, "totalTax": 0 }
+    },
+    {
+      "id": "st-surcharge-60l",
+      "source": "statute",
+      "label": "60 lakh income, new regime (10% surcharge)",
+      "tool": "compute_tax",
+      "args": { "regime": "new", "otherIncome": 6000000 },
+      "working": "3,00,000 on the first 24,00,000 + 30% of 36,00,000 = 13,80,000. Surcharge 10% = 1,38,000; marginal relief does not bind (15,18,000 is below 10,80,000 + 10,00,000). Cess 4% of 15,18,000 = 60,720. Total 15,78,720.",
+      "expect": { "slabTax": 1380000, "surcharge": 138000, "totalTax": 1578720 }
+    },
+    {
+      "id": "st-surcharge-relief-51l",
+      "source": "statute",
+      "label": "51 lakh income, new regime (surcharge marginal relief)",
+      "tool": "compute_tax",
+      "args": { "regime": "new", "otherIncome": 5100000 },
+      "working": "Slab tax 11,10,000; 10% surcharge would be 1,11,000. Relief caps tax + surcharge at the tax on 50,00,000 (10,80,000) plus the 1,00,000 excess = 11,80,000, so surcharge is 70,000. Cess 4% of 11,80,000 = 47,200. Total 12,27,200.",
+      "expect": { "slabTax": 1110000, "surcharge": 70000, "totalTax": 1227200 }
+    }
+  ]
+}
