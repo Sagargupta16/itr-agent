@@ -150,7 +150,12 @@ jobs:
     permissions:
       contents: write
     steps:
+      # pnpm bundle runs `pnpm dlx @anthropic-ai/mcpb`, whose dependency tree no
+      # lockfile pins. Keep the write token out of .git/config while it runs;
+      # gh release upload below reads GH_TOKEN from its own env instead.
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
