@@ -1,6 +1,8 @@
 # deps / build
 node_modules/
 dist/
+# .mcpb Desktop bundle output (pnpm bundle)
+build/
 
 # stray tsc emit next to the sources. `tsc -p tsconfig.test.json` without
 # --noEmit writes .js/.d.ts beside every .ts because that config widens rootDir
