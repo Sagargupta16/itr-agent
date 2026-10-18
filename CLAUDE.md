@@ -15,7 +15,7 @@ Local-first MCP server for Indian income tax (FY 2025-26 / AY 2026-27): determin
 ## Stack
 
 - **Language**: TypeScript 7 (strict, ESM, NodeNext)
-- **Framework**: @modelcontextprotocol/sdk 1.30 (stdio transport only), zod 4
+- **Framework**: @modelcontextprotocol/sdk 1.32 (stdio transport only), zod 4
 - **Database**: none -- rule packs are JSON files in `data/`
 - **Package manager**: pnpm
 - **Deploy target**: npm registry (`npx -y itr-agent`); .mcpb Desktop bundle planned
@@ -67,7 +67,7 @@ shows up at runtime.
 - The senior / super-senior basic exemption is a SLAB SET (`oldRegime.slabsSenior` / `slabsSuperSenior`), never an income deduction. Subtracting it from income under-taxes by a whole slab and mis-states total income; the age-band tests pin `taxableNormalIncome` for exactly this reason.
 - Surcharge marginal relief compares tax PLUS surcharge at the band threshold against the actual figure (via a notional recomputation on income rolled back to the threshold). Comparing surcharge alone leaves the full amount standing just past a band edge.
 - The 25%/37% surcharge bands exclude 111A/112/112A/dividend income (First Schedule Part I Para A), so a taxpayer past Rs 2 crore purely on gains stays in the 15% band.
-- SDK v2 has NOT shipped: as of 2026-09-06 npm's `latest` dist-tag for `@modelcontextprotocol/sdk` is still 1.30.0, with no 2.x published. When it lands it flips `registerTool` input schemas from raw zod shapes to `z.object()`, which is why the multi-field shapes are hoisted to module-level consts in `src/server.ts` (`taxInputShape`, `interest234Shape`, `hraShape`); single-purpose tool schemas stay inline at their registration. Forward-looking, not an imminent migration.
+- SDK v2 shipped on 2026-07-27 under NEW package names (`@modelcontextprotocol/server` + `@modelcontextprotocol/core`, 2.3.1 as of 2026-10-18), so `@modelcontextprotocol/sdk` stays on 1.x and its `latest` dist-tag never shows a 2.x -- checking that package alone is how an earlier note concluded v2 had not shipped. The v2 server depends only on zod and core, which would retire the hono/qs/ip-address/fast-uri runtime overrides. Migrating flips `registerTool` input schemas from raw zod shapes to `z.object()`, which is why the multi-field shapes are hoisted to module-level consts in `src/server.ts` (`taxInputShape`, `interest234Shape`, `hraShape`); single-purpose tool schemas stay inline at their registration. Forward-looking, not an imminent migration.
 - `data/` ships in the npm package (`files` field); `resolveDataDir()` in rulepack.ts probes both dist- and src-relative paths.
 - `server.json` (MCP registry manifest) carries the version TWICE -- top level and `packages[0].version` -- and both must equal `package.json` version and the release tag. `publish.yml` fails the release if they drift, or if `server.json` `name` stops matching `package.json` `mcpName`.
 - FY 2026-27 pack: Form 16 becomes Form 130 and HRA metros go 4 -> 8 (Income-tax Act 2025 + Income-tax Rules 2026, effective 1 Apr 2026); buyback reverts to capital gains (Finance Act 2026). New JSON pack + `availableYears()` update, no engine changes expected.
