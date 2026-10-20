@@ -1,0 +1,36 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Sagargupta16/orrery/main/skills/orrery/references/diagram.schema.json
+# Rendered with orrery (github.com/Sagargupta16/orrery):
+#   orrery render docs/diagrams/filing-flow.yaml -o docs/diagrams/filing-flow -f svg --theme both
+# Reviewed at README width: orrery review docs/diagrams/filing-flow.yaml --width 880
+title: The guided filing interview
+subtitle: "file_my_itr: the tools Claude calls, in order. Every figure is a tool output; you press submit."
+direction: down
+layout:
+  merge: false
+legend:
+  dashed: Done by you, outside itr-agent
+
+groups:
+  tools: { type: zone, label: Tools, icon: false }
+  outside: { type: internet, label: Outside this tool }
+
+nodes:
+  you: { icon: tabler:user, label: You }
+  claude: { icon: logos:claude-icon, label: Claude, note: one question at a time }
+  form: { icon: tabler:receipt-tax, label: Pick the form, note: recommend_itr_form, in: tools }
+  regimes: { icon: github:git-compare, label: Pick the regime, note: compare_regimes, in: tools }
+  parse: { icon: tabler:file-text, label: Parse exports, note: "parse_form26as, parse_ais", in: tools }
+  reconcile: { icon: github:diff, label: Reconcile, note: reconcile_documents, in: tools }
+  interest: { icon: tabler:calendar, label: Advance tax, note: "schedule_advance_tax, compute_interest_234", in: tools }
+  checklist: { icon: tabler:checklist, label: Portal steps, note: filing_checklist, in: tools }
+  portal: { icon: tabler:building-bank, label: incometax.gov.in, note: e-verify and submit, in: outside }
+
+edges:
+  - you -> claude: { label: "residency, income, losses", step: 1 }
+  - claude -> form: { label: form + deadline, step: 2 }
+  - claude -> regimes: { label: regime + savings, step: 3 }
+  - claude -> parse: { label: TDS rows, step: 4 }
+  - claude -> reconcile: { label: mismatches, step: 5 }
+  - claude -> interest: { label: installments, step: 6 }
+  - claude -> checklist: { label: walkthrough, step: 7 }
+  - checklist --> portal: { label: you press submit, step: 8 }

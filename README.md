@@ -46,6 +46,12 @@ Every Indian tax tool wants your data on their servers. itr-agent flips it: your
 8. `schedule_advance_tax` / `compute_interest_234` if applicable
 9. `filing_checklist` -> schedule-by-schedule portal walkthrough, ending at e-verification
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/filing-flow-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="docs/diagrams/filing-flow-light.svg">
+  <img width="880" src="docs/diagrams/filing-flow-light.svg" alt="The guided filing interview as a numbered flow. Step 1: you answer Claude one question at a time on residency, income and losses. Claude then calls the itr-agent tools in order: step 2 recommend_itr_form returns the form and deadline, step 3 compare_regimes returns the regime and savings, step 4 parse_form26as and parse_ais return your TDS rows, step 5 reconcile_documents returns the mismatches, step 6 schedule_advance_tax and compute_interest_234 return the installments, step 7 filing_checklist returns the portal walkthrough. Step 8, drawn dashed because it happens outside the tool: you e-verify and press submit on incometax.gov.in.">
+</picture>
+
 ## Tools (v0.5)
 
 | Tool | What it does |
@@ -66,6 +72,8 @@ Every Indian tax tool wants your data on their servers. itr-agent flips it: your
 All tools are read-only (`readOnlyHint: true`), take zod-validated inputs, and return `structuredContent` alongside the human-readable text.
 
 ## Install
+
+**What `npx` installs today.** The npm badge at the top is live. While it reads 0.3.0, `npx -y itr-agent` installs the July 2026 engine without the 0.4.0 and 0.5.0 fixes (senior slab sets, surcharge marginal relief, s.87A on total income, 26AS booking status). No publish has reached npm since then: the trusted-publisher link between `publish.yml` and npmjs.com is still to be set up, and no GitHub release carries the `.mcpb` yet. Until the badge reads 0.5.x, install from source below.
 
 ### Claude Code
 
@@ -90,7 +98,7 @@ Add to `claude_desktop_config.json`:
 
 ### Claude Desktop, one click
 
-From v0.5.2, every [GitHub release](https://github.com/Sagargupta16/itr-agent/releases) carries `itr-agent-<version>.mcpb` and its `.sha256`. The bundle inlines the server and its dependencies into one file, so there is no npm or `npx` step: double-click it, or use Settings > Extensions > Install Extension in Claude Desktop. It needs Node 22 or later, like the npm package. `pnpm bundle` builds the same file locally into `build/`.
+From the v0.5.3 release on, every [GitHub release](https://github.com/Sagargupta16/itr-agent/releases) carries `itr-agent-<version>.mcpb` and its `.sha256`. The bundle inlines the server and its dependencies into one file, so there is no npm or `npx` step: double-click it, or use Settings > Extensions > Install Extension in Claude Desktop. It needs Node 22 or later, like the npm package. `pnpm bundle` builds the same file locally into `build/`.
 
 ### From source
 
@@ -154,32 +162,13 @@ Honest boundaries, so you know before you rely on it. [`docs/v0.2-spec.md`](docs
 
 One stdio process, three layers, no network. The prompt sequences the interview, the MCP layer validates every input, and pure functions over a versioned JSON rule pack produce every number.
 
-```mermaid
-flowchart LR
-  client["MCP client<br/>(Claude Desktop / Claude Code)"]
-  subgraph proc["itr-agent (one local Node process)"]
-    direction LR
-    stdio["src/index.ts<br/>stdio transport"]
-    server["src/server.ts<br/>12 tools + file_my_itr prompt<br/>zod input schemas"]
-    subgraph engine["src/engine (pure functions)"]
-      compute["compute.ts<br/>slabs, 87A, surcharge, cess"]
-      form["itr-form.ts<br/>form picker + checklist"]
-      other["interest.ts / advance-tax.ts<br/>hra.ts / reconcile.ts"]
-    end
-    subgraph parsers["src/parsers"]
-      p26["form26as.ts<br/>TRACES text export"]
-      pais["ais.ts<br/>on-device AES decrypt"]
-    end
-    pack["rulepack.ts + data/fy2025-26.json<br/>every tax constant, validated at load"]
-  end
-  docs[("26AS / AIS files<br/>on your disk")]
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/architecture-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="docs/diagrams/architecture-light.svg">
+  <img width="880" src="docs/diagrams/architecture-light.svg" alt="Architecture of itr-agent. Inside the boundary labelled Your machine: you chat with an MCP client (Claude Desktop or Claude Code), which speaks JSON-RPC over stdio to the itr-agent Node process. Inside that process the stdio transport (src/index.ts) hands requests to the MCP tool surface (12 tools and one prompt, zod-validated inputs), which calls three pure engine functions in src/engine (the tax engine for slabs, 87A, surcharge and cess; the form picker for ITR-1 to ITR-4 and the checklist; interest, advance tax, HRA and reconcile) and two read-only parsers in src/parsers (Form 26AS from the TRACES text export, and AIS with on-device AES decryption). The engine reads every constant from the rule pack data/fy2025-26.json, validated at load. The parsers read your 26AS and AIS exports from files on your disk through an extension allow-list. A dashed arrow from you to incometax.gov.in, drawn outside the tool, marks the one step itr-agent never does: you press submit, because no filing API exists.">
+</picture>
 
-  client <-->|JSON-RPC over stdio| stdio --> server
-  server --> engine
-  server --> parsers
-  parsers -->|read-only, extension allow-list| docs
-  engine --> pack
-```
+The spec behind the picture is [`docs/diagrams/architecture.yaml`](docs/diagrams/architecture.yaml), rendered with [orrery](https://github.com/Sagargupta16/orrery); every node names the source file it stands for.
 
 | Decision | Why |
 | --- | --- |
@@ -195,7 +184,7 @@ flowchart LR
 - **What your MCP client still sees.** Parsed output is returned to whatever client you connected, so if that client is a hosted LLM, the parsed contents reach that provider like any other message. PAN is masked in the human-readable text mirror, but the `structuredContent` payload carries the full parsed document (PAN, TANs, deductor names, amounts) because downstream tools need it. Local-only describes this server, not your whole stack -- for maximum privacy, run it against a local model.
 - **The LLM never does math.** Every rupee is computed by pure functions over `data/fy2025-26.json`. 151 tests pin the engine to published worked examples and to statute: the 12L zero-tax case, the 12,10,000 marginal-relief case, the 12,70,588 relief exhaustion point on both sides, the 13,25,000 total-income case that loses the rebate, the surcharge bands with the First Schedule exclusion of capital-gains income, all three old-regime age bands, and the 234A/234B/234C/HRA/80GG golden cases.
 - **The agent drives, the engine decides.** The interview sequencing is a prompt; every number and every form rule is deterministic code. Nothing is estimated.
-- **Year-parameterized.** Rules live in per-FY JSON packs. FY 2026-27 (Income-tax Act 2025 and Income-tax Rules 2026: Form 16 becomes Form 130, 8 HRA metros; Finance Act 2026: buyback reverts to capital gains) lands as a new pack, not code changes.
+- **Year-parameterized.** Rules live in per-FY JSON packs. FY 2026-27 (Income-tax Act 2025 and Income-tax Rules 2026: Form 16 becomes Form No. 130 under Rule 215, the HRA metros become eight under Rule 279; Finance Act 2026: buyback reverts to capital gains) lands as a new pack, not code changes. Rule 164(14) of the 2026 Rules keeps FY 2025-26 returns on this year's forms, so none of it touches the pack shipped here.
 - **Not tax advice.** Every tool that computes a rupee figure returns a `disclaimers` array and the fiscal year it applied; `compute_tax`, `compute_hra` and `list_tax_years` also return the exact `rulePackVersion`. Verify against the official utility before filing.
 
 ## Roadmap
@@ -203,9 +192,10 @@ flowchart LR
 - [x] **v0.1** -- tax engine (both regimes + CG + surcharge + cess), regime comparison, advance tax, deduction checklist, 26AS text parser
 - [x] **v0.2** -- `parse_ais` (encrypted AIS JSON, on-device decrypt), `reconcile_documents` (the #1-notice-trigger checks), 234B/234C interest with golden-case tests, HRA + 80GG calculators, old-regime 87A semantics fix
 - [x] **v0.3** -- renamed to **itr-agent**; `recommend_itr_form` with loss-continuity awareness ([#3](https://github.com/Sagargupta16/itr-agent/issues/3)), `filing_checklist`, the `file_my_itr` guided interview prompt
-- [x] **v0.4** -- engine correctness pass (senior/super-senior slab sets, surcharge marginal relief on tax + surcharge, the s.111A/112A basic-exemption set-off, s.288A/288B rounding), positional 26AS amount extraction, s.234A + the s.234B(2) payment ladder, reconcile M4/M5, belated-filing guidance, security pins on the SDK's transitives, npm publishing via OIDC with provenance, and an MCP registry manifest ([`server.json`](server.json))
+- [x] **v0.4** -- engine correctness pass (senior/super-senior slab sets, surcharge marginal relief on tax + surcharge, the s.111A/112A basic-exemption set-off, s.288A/288B rounding), positional 26AS amount extraction, s.234A + the s.234B(2) payment ladder, reconcile M4/M5, belated-filing guidance, security pins on the SDK's transitives, an OIDC-with-provenance publish workflow (no run of it has reached npm yet; the npmjs.com trusted-publisher link is pending), and an MCP registry manifest ([`server.json`](server.json))
 - [x] **v0.5** -- fact-check of every constant against primary sources; s.87A on total income; AY 2026-27 form changes (two house properties, Schedule AL at 1 crore, Finance Act 2026 deadlines with citations); employer NPS and house-property loss inputs; 44AD/44ADA ceilings and s.194N in the form picker; 26AS booking status, TCS separation and reconcile M2; path allow-list on the parsers
-- [x] **v0.5.2** -- a validation table against the Budget Speech 2025-26 figures and hand-worked statute cases, enforced in CI; the `.mcpb` one-click Claude Desktop bundle, attached to each release; a README demo rendered from a real stdio session
+- [x] **v0.5.2** -- a validation table against the Budget Speech 2025-26 figures and hand-worked statute cases, enforced in CI; the `.mcpb` one-click Claude Desktop bundle, attached to each release from v0.5.3 on; a README demo rendered from a real stdio session
+- [x] **v0.5.3** -- architecture and filing-flow diagrams rendered from [`docs/diagrams/`](docs/diagrams) with orrery (light and dark, reviewed at README width) in place of the mermaid sketch; the Income-tax Rules 2026 citations (Rules 164, 205, 215, 245, 269, 279) recorded for the FY 2026-27 pack; the README says what npm serves today
 - [ ] **v0.6** (priorities validated against a real AY 2026-27 filing) -- `compute_loss_setoff` (BFLA/CFL engine, [#4](https://github.com/Sagargupta16/itr-agent/issues/4)), `parse_form16` (TRACES PDF), broker capital-gains parsers -- Groww first, then Zerodha ([#7](https://github.com/Sagargupta16/itr-agent/issues/7))
 - [ ] **v0.7** -- `compute_schedule_fa` (foreign assets/RSU, Rule 115 rates, [#5](https://github.com/Sagargupta16/itr-agent/issues/5)), portal quirks playbook ([#6](https://github.com/Sagargupta16/itr-agent/issues/6)), mutual fund CAS via casparser, draft ITR JSON export
 
