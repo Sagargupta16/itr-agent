@@ -3,6 +3,10 @@ name: Publish
 on:
   release:
     types: [published]
+  # Manual run: every check below runs, including the trusted-publisher
+  # diagnostic, and nothing is published or uploaded. Use it to find out why
+  # npmjs.com refuses this workflow without cutting another release.
+  workflow_dispatch:
 
 jobs:
   publish:
@@ -25,6 +29,7 @@ jobs:
       - run: pnpm build
 
       - name: Check version matches release tag
+        if: github.event_name == 'release'
         run: |
           PKG_VERSION=$(node -p "require('./package.json').version")
           TAG="${GITHUB_REF_NAME#v}"
@@ -80,10 +85,54 @@ jobs:
             console.log("ok release candidate computes 1,09,200");
           ' "$out"
 
+      # npm's CLI does the OIDC token exchange itself and, when npmjs.com
+      # refuses, logs the registry's reason only at verbose level before falling
+      # back to whatever credentials exist (none) and failing the PUT with a bare
+      # E404. That same E404 covers a missing link, a mismatched field, and a
+      # link whose allowed actions stop at `npm stage publish`. So do the
+      # exchange here first: print the id-token claims npm matches against the
+      # configured publisher, then the registry's answer, with any token
+      # redacted. A refusal fails the job with the actual reason.
+      - name: Check the npmjs.com trusted publisher link
+        run: |
+          set -euo pipefail
+          PKG=$(node -p "require('./package.json').name")
+          resp=$(curl -fsS -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=npm:registry.npmjs.org")
+          idtoken=$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).value)' "$resp")
+          node -e '
+            const payload = process.argv[1].split(".")[1];
+            const c = JSON.parse(Buffer.from(payload, "base64url").toString());
+            const keys = ["repository", "repository_owner", "repository_visibility", "workflow_ref", "job_workflow_ref", "environment", "ref", "event_name", "aud"];
+            for (const k of keys) console.log(`${k}: ${c[k] === undefined ? "(absent)" : c[k]}`);
+          ' "$idtoken"
+          status=$(curl -sS -o exchange.json -w "%{http_code}" -X POST \
+            -H "Authorization: Bearer ${idtoken}" \
+            "https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/${PKG}")
+          node -e '
+            const fs = require("node:fs");
+            const status = process.argv[1];
+            const raw = fs.readFileSync("exchange.json", "utf8");
+            let body;
+            try { body = JSON.parse(raw); } catch { body = { raw: raw.slice(0, 500) }; }
+            const hasToken = typeof body.token === "string" && body.token.length > 0;
+            if (hasToken) body.token = "<redacted>";
+            console.log(`exchange HTTP ${status}: ${JSON.stringify(body)}`);
+            if (status !== "200" || !hasToken) {
+              console.error("npmjs.com did not issue a publish token for this workflow. On the package settings page, make the trusted publisher match the claims above: owner, repository, workflow filename publish.yml, environment blank; and allow npm publish, not only npm stage publish.");
+              process.exit(1);
+            }
+            console.log("ok npmjs.com accepts this workflow as a trusted publisher");
+          ' "$status"
+          rm -f exchange.json
+
       # No token: authenticated via OIDC trusted publishing configured on npmjs.com
-      - run: npm publish --access public --provenance
+      - name: Publish to npm
+        if: github.event_name == 'release'
+        run: npm publish --access public --provenance
 
       - name: Confirm the published version carries provenance
+        if: github.event_name == 'release'
         run: |
           PKG_VERSION=$(node -p "require('./package.json').version")
           for attempt in 1 2 3 4 5; do
@@ -108,6 +157,7 @@ jobs:
       # hand; failing the workflow here would only mark a good release red.
       # GitHub still surfaces the failure as a step annotation.
       - name: Install mcp-publisher
+        if: github.event_name == 'release'
         continue-on-error: true
         env:
           # Pinned deliberately. `releases/latest` fetches a different binary on
@@ -132,6 +182,7 @@ jobs:
           rm -f "$asset" checksums.txt expected.sha256
 
       - name: Publish to the MCP registry
+        if: github.event_name == 'release'
         continue-on-error: true
         run: |
           set -euo pipefail
@@ -146,6 +197,7 @@ jobs:
     # The one-click Claude Desktop bundle (.mcpb), attached to the same GitHub
     # release. A separate job so a failed npm publish does not withhold the
     # bundle, and so only this job holds contents: write (release upload).
+    if: github.event_name == 'release'
     runs-on: ubuntu-latest
     permissions:
       contents: write
