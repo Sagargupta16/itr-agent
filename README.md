@@ -73,7 +73,7 @@ All tools are read-only (`readOnlyHint: true`), take zod-validated inputs, and r
 
 ## Install
 
-**What `npx` installs today.** The npm badge at the top is live. While it reads 0.3.0, `npx -y itr-agent` installs the July 2026 engine without the 0.4.0 and 0.5.0 fixes (senior slab sets, surcharge marginal relief, s.87A on total income, 26AS booking status). No publish has reached npm since then: the trusted-publisher link between `publish.yml` and npmjs.com is still to be set up, and no GitHub release carries the `.mcpb` yet. Until the badge reads 0.5.x, install from source below.
+**What `npx` installs today.** The npm badge at the top is live. While it reads 0.3.0, `npx -y itr-agent` installs the July 2026 engine without the 0.4.0 and 0.5.0 fixes (senior slab sets, surcharge marginal relief, s.87A on total income, 26AS booking status). No publish has reached npm since then: every `npm publish` from `publish.yml` has been refused by npmjs.com, most recently for v0.5.3 on 2026-10-20. Until the badge reads 0.5.x, use the `.mcpb` from the [v0.5.3 release](https://github.com/Sagargupta16/itr-agent/releases/tag/v0.5.3) (one click, below) or install from source.
 
 ### Claude Code
 

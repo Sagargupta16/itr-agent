@@ -3,6 +3,21 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.5.4] - 2026-10-20
+
+Release-path diagnostics. No computed figure, tool input or tool output changes; the 151-test suite and the 58 validation figures pass unchanged.
+
+The v0.5.3 release (2026-10-20) attached the `.mcpb` bundle, so the one-click Claude Desktop install exists from that release on, but `npm publish` was refused with the same E404 as v0.5.1, after the trusted publisher had been configured on npmjs.com, and a rerun of the job failed identically. npm's CLI performs the OIDC token exchange itself and, when the registry refuses, logs the reason only at verbose level before falling back to the bare 404 (`lib/utils/oidc.js` in npm/cli). npm's docs name a second way to reach that 404 with a configured publisher: allowed actions limited to `npm stage publish`.
+
+### Added
+
+- `publish.yml` step "Check the npmjs.com trusted publisher link", before `npm publish`: fetches the GitHub id-token with the `npm:registry.npmjs.org` audience, prints the claims npm matches (repository, workflow_ref, environment, ref, event), calls `POST /-/npm/v1/oidc/token/exchange/package/itr-agent` and prints the HTTP status and body with any token redacted. A refusal now fails the job with the registry's own message. The workflow also accepts `workflow_dispatch`, which runs every check including this one and publishes nothing: the version-tag check, `npm publish`, the provenance check, the registry listing and the bundle job are gated on the release event
+
+### Changed
+
+- README Install: the v0.5.3 release carries the `.mcpb`, so the one-click install is the way to get 0.5.x while npm is still 0.3.0
+- CLAUDE.md gotcha on the E404 names all three causes npm folds into it and points at the diagnostic step
+
 ## [0.5.3] - 2026-10-20
 
 Docs and diagrams. No computed figure, tool input or tool output changes; the 151-test suite and the 58 validation figures pass unchanged.
