@@ -21,11 +21,21 @@ pnpm test
 - **Local-only is the product.** PRs adding network transports, telemetry, or cloud calls will be declined.
 - **Parsers are tolerant**: collect `warnings[]`, never throw on layout surprises; error messages must name the fix.
 - Never commit real tax documents, PANs, or personal data. Anything checked in must be synthetic; `fixtures/` is gitignored precisely because it is the scratch directory where a real 26AS or AIS export lands while you check a parser locally.
-- Conventional commits; `pnpm lint && pnpm typecheck && pnpm test` must pass.
+- Conventional commits; `pnpm lint`, `pnpm typecheck`, `pnpm test` and `pnpm validate` must all pass (CI runs each of them on every push).
 
 ## Adding a fiscal year
 
 New FY = new `data/fyYYYY-YY.json` pack + `availableYears()` update + golden tests for the changed rules. Engine code changes should be rare -- if a rule change needs code, consider whether the rule pack schema should grow instead.
+
+## Diagrams
+
+The README's architecture and filing-flow diagrams are rendered from the YAML specs in `docs/diagrams/` with [orrery](https://github.com/Sagargupta16/orrery). Edit the spec, not the SVG, then re-render both themes and commit the SVGs with it:
+
+```bash
+orrery render docs/diagrams/architecture.yaml -o docs/diagrams/architecture -f svg --theme both
+```
+
+`orrery review docs/diagrams/architecture.yaml --width 880` scores the result at README width; keep it passing.
 
 ## Reporting parse failures
 

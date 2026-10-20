@@ -1,0 +1,39 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Sagargupta16/orrery/main/skills/orrery/references/diagram.schema.json
+# Rendered with orrery (github.com/Sagargupta16/orrery):
+#   orrery render docs/diagrams/architecture.yaml -o docs/diagrams/architecture -f svg --theme both
+# Reviewed at README width: orrery review docs/diagrams/architecture.yaml --width 880
+title: itr-agent architecture
+subtitle: One local Node process over stdio. No network, no telemetry, no accounts.
+direction: down
+legend:
+  dashed: Done by you, outside itr-agent
+
+groups:
+  machine: { type: boundary, label: Your machine }
+  proc: { type: box, label: "itr-agent (one Node process)", in: machine }
+  engine: { type: zone, label: engine, in: proc }
+  parsers: { type: zone, label: parsers, in: proc }
+
+nodes:
+  you: { icon: tabler:user, label: You, in: machine }
+  client: { icon: logos:claude-icon, label: MCP client, note: Claude Desktop or Claude Code, in: machine }
+  portal: { icon: tabler:building-bank, label: incometax.gov.in, note: "outside this tool; no filing API exists" }
+  stdio: { icon: logos:nodejs-icon, label: stdio transport, note: src/index.ts, in: proc }
+  server: { icon: logos:model-context-protocol-icon, label: MCP tool surface, note: "12 tools + 1 prompt, zod inputs", in: proc }
+  compute: { icon: tabler:calculator, label: Tax engine, note: "slabs, 87A, surcharge, cess", in: engine }
+  form: { icon: tabler:receipt-tax, label: Form picker, note: ITR-1/2/3/4 + checklist, in: engine }
+  other: { icon: tabler:percentage, label: Interest + HRA, note: "234A/B/C, advance tax, reconcile", in: engine }
+  p26: { icon: tabler:file-text, label: Form 26AS, note: TRACES text export, in: parsers }
+  pais: { icon: tabler:file-lock, label: AIS, note: on-device AES decrypt, in: parsers }
+  pack: { icon: tabler:json, label: Rule pack, note: "data/fy2025-26.json, validated at load", in: proc }
+  docs: { shape: document, label: Your 26AS / AIS exports, note: files on your disk, in: machine }
+
+edges:
+  - you -> client
+  - you --> portal: you press submit
+  - client -> stdio: JSON-RPC over stdio
+  - stdio -> server
+  - server -> compute, form, other
+  - server -> p26, pais
+  - engine -> pack: every constant
+  - parsers -> docs: "read-only, extension allow-list"

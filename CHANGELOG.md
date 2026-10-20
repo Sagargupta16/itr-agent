@@ -3,6 +3,24 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.5.3] - 2026-10-20
+
+Docs and diagrams. No computed figure, tool input or tool output changes; the 151-test suite and the 58 validation figures pass unchanged.
+
+Like 0.5.1 and 0.5.2, this version is cut before any publish has reached npm: there is no v0.5.2 release (so no `.mcpb` on any release yet), npm `latest` is 0.3.0 (checked 2026-10-20), and registry.modelcontextprotocol.io has no `io.github.sagargupta16/itr-agent` entry. The repo holds no npm token, so the only route is the npmjs.com trusted-publisher link for `publish.yml`; once it exists, the v0.5.3 release ships everything since 0.3.0.
+
+### Added
+
+- `docs/diagrams/`: two [orrery](https://github.com/Sagargupta16/orrery) specs with their light and dark SVG renders. `architecture.yaml` draws the one-process layout (you, the MCP client, the stdio transport, the tool surface, `src/engine`, `src/parsers`, the rule pack, your exports on disk, and the portal outside the tool). `filing-flow.yaml` draws `file_my_itr` as eight numbered steps from your first answer to the submit button. Both pass `orrery review --width 880`, the width GitHub gives a README, with node labels at 10px or more; the first left-to-right drafts measured 2444px and 3468px wide (labels at 4.7px and 3.3px) and were redrawn top-down. The SVGs animate: packets travel the edges and the numbered steps play in order
+- README embeds both (`<picture>` with a dark-scheme source): the architecture one replaces the mermaid sketch, the filing-flow one sits under the nine-step list in The agent. CONTRIBUTING and CLAUDE.md say to edit the YAML and re-render both themes, never the SVG
+
+### Changed
+
+- README Install opens with what `npx -y itr-agent` installs today: while the npm badge reads 0.3.0 it is the July 2026 engine without the 0.4.0 and 0.5.0 fixes, and no release carries the `.mcpb` yet. The one-click section and the roadmap say "from v0.5.3" instead of "from v0.5.2", and the v0.4 roadmap line no longer counts the OIDC publish as done
+- CLAUDE.md's FY 2026-27 note carries the Income-tax Rules 2026 [G.S.R. 198(E), 20-3-2026] rule numbers, read from the official PDF on incometaxindia.gov.in: Rule 279(1)(c) for the eight HRA metros at 50%, Rule 215 for Form No. 130 (Form 16), Rule 205 for Form No. 124 (Form 12BB), Rule 65 for Form No. 31 (Form 10BA, s.134), Rule 245 for Form No. 168 (AIS), Rule 269 as the verbatim successor of Rule 119A, Rule 164 for the ITR-1 conditions, and Rule 164(14) as the savings clause that keeps FY 2025-26 returns on this year's forms. The Rules carry no slab, rebate, surcharge or cess figure, and no 26AS successor rule was found in them. README's Year-parameterized bullet cites Rules 215, 279 and 164(14) the same way
+- CONTRIBUTING lists `pnpm validate` beside the other three gates and no longer writes them as one `&&` chain (PowerShell 5.1 has no `&&`), and gains a Diagrams section
+- `docs/v0.2-spec.md` status line dated 2026-10-20; nothing in its table moved
+
 ## [0.5.2] - 2026-10-18
 
 A release-path fix plus three additions that let someone check the engine without reading it. No computed figure, tool input or tool output changes; the 151-test suite passes unchanged.
