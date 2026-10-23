@@ -5,6 +5,8 @@
 title: itr-agent architecture
 subtitle: One local Node process over stdio. No network, no telemetry, no accounts.
 direction: down
+layout:
+  spacing: compact
 legend:
   dashed: Done by you, outside itr-agent
 
@@ -16,8 +18,8 @@ groups:
 
 nodes:
   you: { icon: tabler:user, label: You, in: machine }
-  client: { icon: logos:claude-icon, label: MCP client, note: Claude Desktop or Claude Code, in: machine }
-  portal: { icon: tabler:building-bank, label: incometax.gov.in, note: "outside this tool; no filing API exists" }
+  client: { icon: logos:claude-icon, label: MCP client, note: Claude Desktop or Claude Code, in: machine, align: you }
+  portal: { icon: tabler:building-bank, label: incometax.gov.in, note: "outside this tool; no filing API exists", rank: first }
   stdio: { icon: logos:nodejs-icon, label: stdio transport, note: src/index.ts, in: proc }
   server: { icon: logos:model-context-protocol-icon, label: MCP tool surface, note: "12 tools + 1 prompt, zod inputs", in: proc }
   compute: { icon: tabler:calculator, label: Tax engine, note: "slabs, 87A, surcharge, cess", in: engine }

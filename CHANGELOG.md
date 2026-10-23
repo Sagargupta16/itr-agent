@@ -3,6 +3,14 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.5.5] - 2026-10-24
+
+Diagrams only. No computed figure, tool input or tool output changes.
+
+### Changed
+
+- `docs/diagrams/`: both figures re-rendered with orrery 0.12.0, which draws icon tiles at 64px instead of 48px. With the bigger tiles the old architecture layout grew to 1111 x 2131px with incometax.gov.in alone in the bottom corner, so `architecture.yaml` now sets `layout.spacing: compact`, puts the MCP client beside you (`align: you`) and the portal above your machine (`rank: first`): 947 x 1759px, the "you press submit" arrow is one short dashed hop, and it scores 96.2 at `orrery review --width 880` with node labels at 12px. No node or edge changed. `filing-flow.yaml` is re-rendered as it was: 1012 x 1212px, 97.1
+
 ## [0.5.4] - 2026-10-20
 
 Release-path diagnostics. No computed figure, tool input or tool output changes; the 151-test suite and the 58 validation figures pass unchanged.
