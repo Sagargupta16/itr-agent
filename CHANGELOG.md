@@ -3,6 +3,19 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.5.6] - 2026-10-24
+
+Dependency security fixes. No computed figure, tool input or tool output changes; the 151-test suite and the 58 validation figures pass unchanged.
+
+### Security
+
+- Clears all 11 open Dependabot alerts (2 high, 6 moderate, 3 low); `pnpm audit` is clean again. Lockfile only for the runtime three, which the existing ranges and overrides already allowed:
+  - fast-uri 3.1.8 -> 3.1.9 (via the MCP SDK > ajv): GHSA-w74x-v6f9-j3xg, GHSA-wjr9-j795-jxcr, GHSA-xhq7-xmqj-769h and GHSA-333x-w4r6-6crp. ajv is the one of the three the server loads: `server/mcp.js` and `server/stdio.js` reach only ajv, ajv-formats, zod and zod-to-json-schema
+  - body-parser 2.3.0 -> 2.4.0 (via the MCP SDK > express): GHSA-27r3-jxmh-p828 (high, DoS via trailing bytes after a compressed body). Pulls content-type 2.1.0
+  - ip-address 10.7.3 -> 10.7.4 (via the MCP SDK > express-rate-limit): GHSA-rxp7-6hxx-x8q5
+  - express and express-rate-limit back the SDK's HTTP transport, which this stdio-only server never imports, so body-parser and ip-address were installed but not reachable
+- vite 8.1.3 -> 8.3.5 (dev-only, via Vitest): GHSA-587h-7wmj-h5pm (high), GHSA-r825-w8mm-5pxw, GHSA-698v-4r3x-3vcv, GHSA-rq7h-c2jc-7f22 and GHSA-9jrq-w75r-8gcw. Vitest takes vite as an auto-installed peer, which `pnpm update` leaves alone, so `pnpm-workspace.yaml` gains an eighth override, `vite: '>=8.1.6 <9'`, capped inside Vitest's declared `^8`. rolldown 1.2.15 and lightningcss 1.33.0 move with it
+
 ## [0.5.5] - 2026-10-24
 
 Diagrams only. No computed figure, tool input or tool output changes.
