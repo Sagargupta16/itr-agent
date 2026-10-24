@@ -30,6 +30,12 @@ overrides:
   # GHSA-68fv-2mgg-jv7q (high). Dev-only, same reasoning as postcss. Capped below
   # 2 to stay inside postcss's declared ^1.2.1 range.
   source-map-js: '>=1.2.2 <2'
+  # vitest resolves vite 8.1.3, which carries GHSA-587h-7wmj-h5pm (high),
+  # GHSA-r825-w8mm-5pxw, GHSA-698v-4r3x-3vcv, GHSA-rq7h-c2jc-7f22 and
+  # GHSA-9jrq-w75r-8gcw. vitest takes vite as an auto-installed peer, which
+  # `pnpm update` leaves alone, so the fix needs an override. Dev-only, same
+  # reasoning as postcss. Capped below 9 to stay inside vitest's declared ^8.
+  vite: '>=8.1.6 <9'
 # Nothing in this repo sets `minimumReleaseAge`, but a contributor's global pnpm
 # config can, and this list is what lets a fresh `pnpm install --frozen-lockfile`
 # resolve the exact versions the lockfile already pins. Refresh it to the
