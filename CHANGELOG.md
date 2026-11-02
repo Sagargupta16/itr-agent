@@ -3,6 +3,14 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.5.7] - 2026-11-02
+
+Registry name only. No computed figure, tool input or tool output changes.
+
+### Fixed
+
+- The MCP Registry name is now `io.github.Sagargupta16/itr-agent` in `package.json` (`mcpName`) and `server.json`. The registry grants a GitHub Actions login `io.github.<repository owner>/*` with the owner exactly as GitHub spells it, and compares names case-sensitively, so the lowercase `io.github.sagargupta16/itr-agent` would have been refused at the registry step even once npm accepted the publish. orrery and bedrock-multi-model-mcp are listed under the same casing.
+
 ## [0.5.6] - 2026-10-24
 
 Dependency security fixes. No computed figure, tool input or tool output changes; the 151-test suite and the 58 validation figures pass unchanged.
