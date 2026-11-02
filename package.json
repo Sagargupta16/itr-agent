@@ -1,6 +1,6 @@
 {
   "name": "itr-agent",
-  "version": "0.5.6",
+  "version": "0.5.7",
   "description": "Local-first MCP filing agent for Indian income tax: pick your ITR form, compute tax, reconcile 26AS/AIS, and walk the filing checklist -- entirely on your machine",
   "keywords": [
     "mcp",
@@ -19,7 +19,7 @@
     "type": "git",
     "url": "git+https://github.com/Sagargupta16/itr-agent.git"
   },
-  "mcpName": "io.github.sagargupta16/itr-agent",
+  "mcpName": "io.github.Sagargupta16/itr-agent",
   "type": "module",
   "bin": {
     "itr-agent": "dist/index.js"
