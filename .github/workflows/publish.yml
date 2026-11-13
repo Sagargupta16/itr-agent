@@ -4,9 +4,17 @@ on:
   release:
     types: [published]
   # Manual run: every check below runs, including the trusted-publisher
-  # diagnostic, and nothing is published or uploaded. Use it to find out why
-  # npmjs.com refuses this workflow without cutting another release.
+  # diagnostic, and nothing is published to npm or uploaded. Use it to find out
+  # why npmjs.com refuses this workflow without cutting another release. With
+  # `list_version` set it also lists that already-published npm version on the
+  # MCP registry: the recovery path when a release reached npm but its registry
+  # steps did not run (v0.6.0, 2026-11-13).
   workflow_dispatch:
+    inputs:
+      list_version:
+        description: "Already-published npm version to list on the MCP registry, e.g. 0.6.0. Leave empty for a dry run."
+        required: false
+        default: ""
 
 jobs:
   publish:
@@ -129,25 +137,62 @@ jobs:
           ' "$status"
           rm -f exchange.json
 
-      # No token: authenticated via OIDC trusted publishing configured on npmjs.com
+      # No token: authenticated via OIDC trusted publishing configured on npmjs.com.
+      # Idempotent, so re-running a release whose publish already landed goes
+      # straight on to the checks and the registry listing instead of failing
+      # on "cannot publish over the previously published version".
       - name: Publish to npm
+        id: npm_publish
         if: github.event_name == 'release'
-        run: npm publish --access public --provenance
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if npm view "itr-agent@${PKG_VERSION}" version > /dev/null 2>&1; then
+            echo "itr-agent@${PKG_VERSION} is already on npm; not publishing it again"
+          else
+            npm publish --access public --provenance
+          fi
 
+      # The registry's version endpoint lags the publish: v0.6.0 still answered
+      # E404 for 75 seconds after `+ itr-agent@0.6.0`, so this waits up to five
+      # minutes. A red result here no longer blocks the MCP registry steps.
       - name: Confirm the published version carries provenance
         if: github.event_name == 'release'
         run: |
           PKG_VERSION=$(node -p "require('./package.json').version")
-          for attempt in 1 2 3 4 5; do
-            if npm view "itr-agent@${PKG_VERSION}" dist.attestations --json | grep -q 'provenance'; then
+          for attempt in $(seq 1 20); do
+            if npm view "itr-agent@${PKG_VERSION}" dist.attestations --json 2> /dev/null | grep -q 'provenance'; then
               echo "ok itr-agent@${PKG_VERSION} has provenance attestations"
               exit 0
             fi
-            echo "registry not caught up yet (attempt ${attempt}), retrying in 15s"
+            echo "registry not caught up yet (attempt ${attempt} of 20), retrying in 15s"
             sleep 15
           done
           echo "published ${PKG_VERSION} without provenance attestations" >&2
           exit 1
+
+      # Dispatch with `list_version`: point server.json at a version that is
+      # already on npm, so mcp-publisher lists that version. The registry reads
+      # `mcpName` from the PUBLISHED tarball, so the version must exist first.
+      - name: Point server.json at the version being listed
+        id: list_target
+        if: github.event_name == 'workflow_dispatch' && inputs.list_version != ''
+        env:
+          LIST_VERSION: ${{ inputs.list_version }}
+        run: |
+          set -euo pipefail
+          if ! printf '%s' "$LIST_VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "list_version must look like 0.6.0, got: $LIST_VERSION" >&2
+            exit 1
+          fi
+          npm view "itr-agent@${LIST_VERSION}" version
+          node -e '
+            const fs = require("node:fs");
+            const s = JSON.parse(fs.readFileSync("server.json", "utf8"));
+            s.version = process.argv[1];
+            s.packages[0].version = process.argv[1];
+            fs.writeFileSync("server.json", `${JSON.stringify(s, null, 2)}\n`);
+            console.log(`server.json now lists ${s.name}@${s.version}`);
+          ' "$LIST_VERSION"
 
       # MCP registry listing (the registry is in preview). It verifies namespace
       # ownership via the same GitHub OIDC token, and package ownership by
@@ -159,8 +204,10 @@ jobs:
       # release is still correct on npm and the two commands can be re-run by
       # hand; failing the workflow here would only mark a good release red.
       # GitHub still surfaces the failure as a step annotation.
+      # Runs whenever the npm publish step succeeded (or the dispatch named a
+      # published version), even if the provenance wait above went red.
       - name: Install mcp-publisher
-        if: github.event_name == 'release'
+        if: ${{ !cancelled() && ((github.event_name == 'release' && steps.npm_publish.outcome == 'success') || (github.event_name == 'workflow_dispatch' && steps.list_target.outcome == 'success')) }}
         continue-on-error: true
         env:
           # Pinned deliberately. `releases/latest` fetches a different binary on
@@ -185,7 +232,7 @@ jobs:
           rm -f "$asset" checksums.txt expected.sha256
 
       - name: Publish to the MCP registry
-        if: github.event_name == 'release'
+        if: ${{ !cancelled() && ((github.event_name == 'release' && steps.npm_publish.outcome == 'success') || (github.event_name == 'workflow_dispatch' && steps.list_target.outcome == 'success')) }}
         continue-on-error: true
         run: |
           set -euo pipefail
