@@ -1,7 +1,7 @@
 {
   "fy": "2025-26",
   "ay": "2026-27",
-  "rulePackVersion": "1.4.0",
+  "rulePackVersion": "1.5.0",
   "sources": [
     "https://www.incometax.gov.in/iec/foportal/help/individual/return-applicable-1",
     "CBDT Notification 45/2026 (30-Mar-2026): AY 2026-27 ITR forms; ITR-1/ITR-4 admit up to two house properties",
@@ -12,7 +12,10 @@
     "Income-tax Act s.80CCD(2) as amended by Finance (No.2) Act 2024: 14% of salary for every employer where income is chargeable under s.115BAC(1A)",
     "Finance Act 2025 First Schedule Part I Paragraph A (surcharge bands; 25%/37% exclude 111A/112/112A/dividend income)",
     "Income-tax Act s.111A proviso and s.112A(2) proviso (unexhausted basic exemption set off against listed-equity gains)",
-    "Income-tax Act s.288A/288B (rounding of total income and tax payable) and Rule 119A (interest base)"
+    "Income-tax Act s.288A/288B (rounding of total income and tax payable) and Rule 119A (interest base)",
+    "Income-tax Act s.24(b) second proviso (interest on a self-occupied house capped at Rs 2 lakh) and s.115BAC(2)(i); incometax.gov.in new-vs-old regime FAQ: interest on borrowed capital for a self-occupied property is not allowed under the new regime",
+    "Income-tax Act s.44AD(1) (deemed profit 8% of turnover, 6% of turnover received through digital modes) and s.44ADA(1) (50% of gross receipts)",
+    "Income-tax Act s.80D: preventive health check-up payments up to Rs 5,000 count within the 80D limits"
   ],
   "newRegime": {
     "slabs": [
@@ -55,8 +58,7 @@
       "allowAgainst112A": false
     },
     "employerNps80CCD2": {
-      "pctOfSalary": 0.14,
-      "aggregateEmployerContributionCap": 750000
+      "pctOfSalary": 0.14
     },
     "surchargeCapRate": 0.25
   },
@@ -127,30 +129,21 @@
       "80D_self_senior": 50000,
       "80D_parents": 25000,
       "80D_parents_senior": 50000,
+      "80D_preventiveCheckup": 5000,
       "80TTA": 10000,
       "80TTB": 50000,
       "24b_selfOccupied": 200000,
       "housePropertyLossSetOff": 200000
     },
-    "hraMetros": [
-      "Delhi",
-      "Mumbai",
-      "Kolkata",
-      "Chennai"
-    ],
     "employerNps80CCD2": {
       "pctOfSalaryPrivate": 0.1,
-      "pctOfSalaryGovernment": 0.14,
-      "aggregateEmployerContributionCap": 750000
+      "pctOfSalaryGovernment": 0.14
     }
   },
   "capitalGains": {
     "stcg111A": 0.2,
     "ltcg112A": 0.125,
     "ltcg112AExemption": 125000,
-    "grandfatheringDate": "2018-01-31",
-    "rateChangeBoundary": "2024-07-23",
-    "debtSlabAcquisitionBoundary": "2023-04-01",
     "basicExemptionSetOff": {
       "against111A": true,
       "against112A": true
@@ -201,8 +194,6 @@
         "cumulativePct": 1.0
       }
     ],
-    "interest234C_ratePerMonth": 0.01,
-    "interest234B_ratePerMonth": 0.01,
     "section234B_paidThresholdPct": 0.9
   },
   "deadlines": {
@@ -235,12 +226,14 @@
       "turnoverCap44ADDigital": 30000000,
       "receiptsCap44ADA": 5000000,
       "receiptsCap44ADADigital": 7500000,
-      "maxVehicles44AE": 10
+      "maxVehicles44AE": 10,
+      "deemedProfit44AD": 0.08,
+      "deemedProfit44ADDigital": 0.06,
+      "deemedProfit44ADA": 0.5
     }
   },
   "tdsCorrectionWindow": {
-    "description": "Deductor correction statements: 6 years from the end of the FY in which the statement was due (proviso to s.200(3), Finance (No.2) Act 2024), cut to 2 years from 1 April 2026 under s.397(3)(f) of the Income-tax Act 2025",
-    "yearsFrom2026": 2
+    "description": "Deductor correction statements: 6 years from the end of the FY in which the statement was due (proviso to s.200(3), Finance (No.2) Act 2024), cut to 2 years from 1 April 2026 under s.397(3)(f) of the Income-tax Act 2025"
   },
   "rounding": {
     "income288A": 10,

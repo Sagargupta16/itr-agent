@@ -24,8 +24,36 @@ export interface HraPeriod {
   hraReceived: number;
   /** Rent actually paid for the period. */
   rentPaid: number;
-  /** Metro = Delhi/Mumbai/Kolkata/Chennai for FY 2025-26 (rule pack). */
+  /** Rented home in one of the rule pack's `hra.metroCities` for the FY.
+   * Callers that know the city should resolve it with `isMetroCity`. */
   isMetro: boolean;
+}
+
+/** Older and alternate names a caller may use for a metro city. Name
+ * normalisation only; which cities count as metros comes from the pack. */
+const CITY_ALIASES: Record<string, string> = {
+  bombay: "mumbai",
+  calcutta: "kolkata",
+  madras: "chennai",
+  "new delhi": "delhi",
+  bangalore: "bengaluru",
+};
+
+function normaliseCity(city: string): string {
+  const key = city
+    .toLowerCase()
+    .replace(/[^a-z\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return CITY_ALIASES[key] ?? key;
+}
+
+/** True when `city` is on the FY's metro list (`hra.metroCities`). The list is
+ * year-specific, which is why the tool takes a city name rather than asking
+ * the caller to decide metro status from a description written for one year. */
+export function isMetroCity(city: string, pack: RulePack): boolean {
+  const wanted = normaliseCity(city);
+  return pack.hra.metroCities.some((m) => normaliseCity(m) === wanted);
 }
 
 export interface HraPeriodResult extends HraPeriod {
@@ -53,7 +81,7 @@ export function computeHra(
 ): HraResult {
   const hra = pack.hra;
 
-  if (regime === "new") {
+  if (!hra.regimes.includes(regime)) {
     const received = periods.reduce((s, p) => s + p.hraReceived, 0);
     return {
       fy: pack.fy,

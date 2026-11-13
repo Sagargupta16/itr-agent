@@ -45,6 +45,9 @@ export interface ItrFormInput {
   /** Business or professional income that is NOT under the presumptive scheme
    * alongside presumptive income. ITR-4 cannot carry both; ITR-3 can. */
   hasNonPresumptiveBusiness?: boolean;
+  /** 44AE only: the most goods carriages owned at any time in the year. Above
+   * the pack's limit the scheme is unavailable. Omit to skip the check. */
+  vehicles44AE?: number;
   /** Partner in a partnership firm (remuneration/interest/share). */
   isPartnerInFirm: boolean;
   losses: LossFlags;
@@ -140,7 +143,7 @@ export function recommendItrForm(
     );
   if (input.stcg111A > 0)
     simpleFormBlocks.push(
-      "STCG under 111A cannot be reported in ITR-1/ITR-4 (only LTCG 112A up to Rs 1.25L is allowed)",
+      `STCG under 111A cannot be reported in ITR-1/ITR-4 (only LTCG 112A up to Rs ${caps.ltcg112ASimpleFormCap.toLocaleString("en-IN")} is allowed)`,
     );
   if (input.ltcg112A > caps.ltcg112ASimpleFormCap)
     simpleFormBlocks.push(
@@ -193,7 +196,7 @@ export function recommendItrForm(
         : p.turnoverCap44AD;
       if (input.presumptiveTurnover > cap)
         presumptiveBlocks.push(
-          `44AD turnover exceeds ${lakh(cap)} (${input.cashReceiptsWithin5Pct ? "cash receipts within 5%" : "Rs 3 crore only where cash receipts are within 5%"}); the scheme is unavailable and s.44AB audit applies`,
+          `44AD turnover exceeds ${lakh(cap)} (${input.cashReceiptsWithin5Pct ? "cash receipts within 5%" : `${lakh(p.turnoverCap44ADDigital)} only where cash receipts are within 5%`}); the scheme is unavailable and s.44AB audit applies`,
         );
     } else if (scheme === "44ADA") {
       const cap = input.cashReceiptsWithin5Pct
@@ -205,6 +208,15 @@ export function recommendItrForm(
         );
     }
   }
+  if (
+    input.presumptive &&
+    input.presumptiveScheme === "44AE" &&
+    input.vehicles44AE !== undefined &&
+    input.vehicles44AE > caps.presumptive.maxVehicles44AE
+  )
+    presumptiveBlocks.push(
+      `44AE: ${input.vehicles44AE} goods carriages exceed the limit of ${caps.presumptive.maxVehicles44AE} at any time in the year; the scheme is unavailable`,
+    );
   if (input.presumptive && input.hasNonPresumptiveBusiness)
     presumptiveBlocks.push(
       "presumptive income alongside non-presumptive business/professional income: ITR-4 has no Schedule BP for the latter",
@@ -240,6 +252,14 @@ export function recommendItrForm(
       if (input.presumptiveTurnover === undefined) {
         notes.push(
           `Presumptive turnover was not supplied, so the 44AD (${lakh(caps.presumptive.turnoverCap44AD)}, ${lakh(caps.presumptive.turnoverCap44ADDigital)} with cash receipts within 5%) / 44ADA (${lakh(caps.presumptive.receiptsCap44ADA)}, ${lakh(caps.presumptive.receiptsCap44ADADigital)}) ceilings were NOT checked. Above them the scheme lapses, s.44AB audit applies and the form is ITR-3.`,
+        );
+      }
+      if (
+        input.presumptiveScheme === "44AE" &&
+        input.vehicles44AE === undefined
+      ) {
+        notes.push(
+          `The number of goods carriages was not supplied, so the 44AE limit of ${caps.presumptive.maxVehicles44AE} was NOT checked.`,
         );
       }
     } else {
@@ -284,7 +304,7 @@ export function recommendItrForm(
     (recommended === "ITR-1" || recommended === "ITR-4")
   ) {
     notes.push(
-      "LTCG under 112A up to Rs 1.25L is reportable in ITR-1/ITR-4 since AY 2025-26 (earlier it forced ITR-2).",
+      `LTCG under 112A up to Rs ${caps.ltcg112ASimpleFormCap.toLocaleString("en-IN")} is reportable in ITR-1/ITR-4 since AY 2025-26 (earlier it forced ITR-2).`,
     );
   }
 
@@ -405,10 +425,12 @@ export function filingChecklist(
     );
   }
   if (form === "ITR-4") {
+    const p = pack.itrEligibility.presumptive;
+    const pct = (rate: number) => `${Math.round(rate * 1000) / 10}%`;
     add(
       "gather",
       "Compute presumptive income",
-      "44AD: 6%/8% of turnover; 44ADA: 50% of gross receipts. Keep turnover proof; no books needed below the thresholds.",
+      `44AD: ${pct(p.deemedProfit44ADDigital)} of turnover received digitally, ${pct(p.deemedProfit44AD)} of the rest; 44ADA: ${pct(p.deemedProfit44ADA)} of gross receipts. Keep turnover proof; no books needed below the thresholds.`,
     );
   }
   add(

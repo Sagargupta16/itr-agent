@@ -119,7 +119,7 @@ const STATUS_RE = /^[FPUOZG]$/;
 
 /** Sum rupee amounts through paise integers: float addition over dozens of
  * two-decimal figures otherwise drifts and breaks exact 26AS comparisons. */
-function sumRupees(values: number[]): number {
+export function sumRupees(values: number[]): number {
   return values.reduce((s, v) => s + Math.round(v * 100), 0) / 100;
 }
 

@@ -68,13 +68,21 @@ export function scheduleAdvanceTax(
     },
   );
 
+  const harbors = pack.interest.s234C.installments
+    .filter((i) => i.safeHarborPct !== null)
+    .map(
+      (i) =>
+        `${Math.round((i.safeHarborPct ?? 0) * 100)}% by ${new Date(`${i.due}T00:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" })}`,
+    )
+    .join(", ");
+
   return {
     fy: pack.fy,
     netLiability,
     advanceTaxApplicable: applicable,
     installments: applicable ? installments : [],
     disclaimers: [
-      "Not tax advice. 234C safe harbors (12% by Jun 15, 36% by Sep 15) and the capital-gains catch-up rule are not modeled here.",
+      `Not tax advice. 234C safe harbors (${harbors}) and the capital-gains catch-up rule are not modeled here.`,
       "Resident seniors (60+) with no business income are exempt from advance tax (s207).",
     ],
   };
