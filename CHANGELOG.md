@@ -3,6 +3,26 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.6.1] - 2026-11-13
+
+Release workflow only. The npm package's code and rule pack are the same as 0.6.0; this version reaches npm with the next release.
+
+v0.6.0 was the first version published from `publish.yml` (`+ itr-agent@0.6.0` with a SLSA provenance attestation, 2026-11-13), and the first on npm since 0.3.0. The run still went red: the provenance check asked for `itr-agent@0.6.0` before the registry's version endpoint had it and gave up after five tries in 75 seconds (E404 "No match found for version 0.6.0"; the attestation was there minutes later). That failure skipped the MCP registry steps, and re-running the job would only have failed `npm publish` on the existing version.
+
+### Fixed
+
+- The provenance check waits up to five minutes (20 tries, 15 seconds apart)
+- The npm publish step skips a version that is already on npm, so a re-run of a release goes on to the checks and the MCP registry listing
+- The MCP registry steps run whenever the npm publish step succeeded, instead of only when every step before them did
+
+### Added
+
+- `workflow_dispatch` input `list_version`: lists an already-published npm version on the MCP registry without cutting a release (the version must be on npm, and must look like 0.6.0). Used to list 0.6.0
+
+### Changed
+
+- README Install no longer says npm serves 0.3.0; CLAUDE.md records the first publish and the recovery path
+
 ## [0.6.0] - 2026-11-13
 
 The fixes from a whole-repo audit on 2026-11-13. The main theme: the model no longer does glue arithmetic between tools. Computed tax for every input that was valid before is unchanged (the 58 validation figures still match); what changes is the house-property carry-forward, two inputs that are now required in a case that was wrong without them, and new optional inputs and outputs.
