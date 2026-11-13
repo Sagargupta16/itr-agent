@@ -19,6 +19,7 @@ Minor, not patch: `compute_tax` and `compare_regimes` refuse a house-property lo
 - `pnpm audit` reported 9 advisories (8 moderate, 1 low) on hono, @hono/node-server and qs, which the 0.5.6 entry below had called clean. Overrides raised: hono `>=4.13.16` (resolves 4.13.18), new `@hono/node-server: '>=2.1.6 <3'` (2.1.8), qs `>=6.16.1` (6.17.1); `@modelcontextprotocol/sdk` 1.32.1 to 1.32.2. The stdio server imports none of the three; they back the SDK's HTTP transports. `pnpm audit` is clean
 - A leftover Claude Code session worktree under `.claude/worktrees/` made local `pnpm lint` fail ("nested root configuration") and `pnpm test` run a stale copy of every test (302 instead of 151). Vitest now collects only `tests/**/*.test.ts` and biome force-ignores `**/.claude`. CI was never affected
 - `publish.yml` no longer restores the pnpm cache in its release jobs: npm's trusted-publishing guide says never to cache in release builds, and a cache another workflow wrote should not feed what ships
+- The CI and release checks handed the server's whole reply to `node -e` as one command-line argument. The longer tool descriptions took the `tools/list` reply from 25,014 to 30,014 bytes, and with its quotes escaped that passed the 32,767-character Windows limit: every windows-latest leg failed with "Argument list too long" (exit 126), reproduced locally in Git Bash. All five such steps now pipe the reply on stdin
 
 ### Added
 
