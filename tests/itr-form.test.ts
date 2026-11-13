@@ -44,7 +44,9 @@ describe("recommendItrForm", () => {
   it("LTCG 112A within 1.25L stays ITR-1 (AY 2025-26 carve-in)", () => {
     const r = recommendItrForm({ ...base, ltcg112A: 100000 }, pack);
     expect(r.recommended).toBe("ITR-1");
-    expect(r.notes.some((n) => n.includes("1.25L"))).toBe(true);
+    // The note quotes the pack's ceiling, so a new pack's figure follows it.
+    const cap = `Rs ${pack.itrEligibility.ltcg112ASimpleFormCap.toLocaleString("en-IN")}`;
+    expect(r.notes.some((n) => n.includes(cap))).toBe(true);
   });
 
   it("LTCG 112A above 1.25L bumps to ITR-2", () => {
@@ -267,6 +269,28 @@ describe("recommendItrForm", () => {
         pack,
       );
       expect(digital.recommended).toBe("ITR-4");
+    });
+
+    it("44AE above the goods-carriage limit forces ITR-3, and an unknown count is named", () => {
+      const max = pack.itrEligibility.presumptive.maxVehicles44AE;
+      const over = recommendItrForm(
+        { ...trader, presumptiveScheme: "44AE", vehicles44AE: max + 1 },
+        pack,
+      );
+      expect(over.recommended).toBe("ITR-3");
+      expect(over.reasons.some((x) => x.includes("44AE"))).toBe(true);
+      const within = recommendItrForm(
+        { ...trader, presumptiveScheme: "44AE", vehicles44AE: max },
+        pack,
+      );
+      expect(within.recommended).toBe("ITR-4");
+      const unknown = recommendItrForm(
+        { ...trader, presumptiveScheme: "44AE" },
+        pack,
+      );
+      expect(unknown.notes.some((n) => n.includes("goods carriages"))).toBe(
+        true,
+      );
     });
 
     it("says so when the turnover was not supplied", () => {

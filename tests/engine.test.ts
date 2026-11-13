@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { scheduleAdvanceTax } from "../src/engine/advance-tax.js";
 import { computeTax, slabTax } from "../src/engine/compute.js";
+import { interestMonths, start234A, start234B } from "../src/engine/dates.js";
 import { loadRulePack } from "../src/engine/rulepack.js";
 
 const pack = loadRulePack("2025-26");
@@ -243,30 +244,136 @@ describe("s.80CCD(2) employer NPS", () => {
 });
 
 describe("house-property loss", () => {
-  it("old regime: set off against other heads up to Rs 2L (s.71(3A)), rest carried forward", () => {
+  it("old regime, let-out: set off against other heads up to Rs 2L (s.71(3A)), rest carried forward", () => {
     const r = computeTax(
       {
         ...base,
         regime: "old",
         salaryIncome: 1500000,
         housePropertyLoss: 250000,
+        housePropertyType: "letOut",
       },
       pack,
     );
+    expect(r.housePropertyLossDisallowed).toBe(0);
     expect(r.housePropertyLossSetOff).toBe(200000);
     expect(r.housePropertyLossCarriedForward).toBe(50000);
     // 15L - 50K SD - 2L = 12.5L
     expect(r.taxableNormalIncome).toBe(1250000);
   });
 
-  it("new regime: no inter-head set-off (s.115BAC(2)(ii)(b)), whole loss carried forward", () => {
+  it("new regime, let-out: no inter-head set-off (s.115BAC(2)(ii)(b)), whole loss carried forward", () => {
     const r = computeTax(
-      { ...base, salaryIncome: 1500000, housePropertyLoss: 150000 },
+      {
+        ...base,
+        salaryIncome: 1500000,
+        housePropertyLoss: 150000,
+        housePropertyType: "letOut",
+      },
       pack,
     );
     expect(r.housePropertyLossSetOff).toBe(0);
     expect(r.housePropertyLossCarriedForward).toBe(150000);
     expect(r.taxableNormalIncome).toBe(1425000);
+  });
+
+  it("an omitted type is treated as let-out for direct engine callers", () => {
+    const r = computeTax(
+      { ...base, salaryIncome: 1500000, housePropertyLoss: 150000 },
+      pack,
+    );
+    expect(r.housePropertyLossCarriedForward).toBe(150000);
+  });
+
+  // s.24(b) second proviso: interest on a self-occupied house is deductible up
+  // to Rs 2 lakh, so a 3 lakh interest bill is a 2 lakh loss, not a 3 lakh one,
+  // and the extra lakh is never carried forward.
+  it("old regime, self-occupied: interest above the s.24(b) cap is disallowed, not carried forward", () => {
+    const r = computeTax(
+      {
+        ...base,
+        regime: "old",
+        salaryIncome: 1500000,
+        housePropertyLoss: 300000,
+        housePropertyType: "selfOccupied",
+      },
+      pack,
+    );
+    expect(r.housePropertyLossDisallowed).toBe(100000);
+    expect(r.housePropertyLossSetOff).toBe(200000);
+    expect(r.housePropertyLossCarriedForward).toBe(0);
+    // 15L - 50K SD - 2L = 12.5L, same tax as before; only the carry-forward moved.
+    expect(r.taxableNormalIncome).toBe(1250000);
+    expect(r.notes.some((n) => n.includes("s.24(b)"))).toBe(true);
+  });
+
+  it("old regime, self-occupied within the cap: all of it is set off", () => {
+    const r = computeTax(
+      {
+        ...base,
+        regime: "old",
+        salaryIncome: 1500000,
+        housePropertyLoss: 150000,
+        housePropertyType: "selfOccupied",
+      },
+      pack,
+    );
+    expect(r.housePropertyLossDisallowed).toBe(0);
+    expect(r.housePropertyLossSetOff).toBe(150000);
+    expect(r.housePropertyLossCarriedForward).toBe(0);
+    expect(r.notes).toEqual([]);
+  });
+
+  // incometax.gov.in new-regime FAQ: "Interest on borrowed capital for
+  // Self-occupied property is not allowed as a deduction ... as per the
+  // provision of Section 115BAC". There is no loss, so nothing carries forward.
+  it("new regime, self-occupied: the interest is not deductible at all", () => {
+    const r = computeTax(
+      {
+        ...base,
+        salaryIncome: 1500000,
+        housePropertyLoss: 300000,
+        housePropertyType: "selfOccupied",
+      },
+      pack,
+    );
+    expect(r.housePropertyLossDisallowed).toBe(300000);
+    expect(r.housePropertyLossSetOff).toBe(0);
+    expect(r.housePropertyLossCarriedForward).toBe(0);
+    expect(r.taxableNormalIncome).toBe(1425000);
+    expect(r.notes.some((n) => n.includes("s.115BAC(2)(i)"))).toBe(true);
+  });
+});
+
+describe("interest month counting (Rule 119A(b))", () => {
+  it.each([
+    // 1 April to 20 July is 3 months 20 days: the part month counts, so 4.
+    ["2026-04-01", "2026-07-20", 4],
+    ["2026-04-01", "2026-07-31", 4],
+    ["2026-04-01", "2026-08-01", 5],
+    // 234A for a 31 July due date runs from 1 August.
+    ["2026-08-01", "2026-08-31", 1],
+    ["2026-08-01", "2026-09-15", 2],
+    // Filed on the due date: the period has not started.
+    ["2026-08-01", "2026-07-31", 0],
+  ])("%s to %s is %i month(s)", (start, end, months) => {
+    expect(interestMonths(start, end, true)).toBe(months);
+  });
+
+  it("counts whole months only when the pack turns the part-month rule off", () => {
+    expect(interestMonths("2026-04-01", "2026-07-20", false)).toBe(3);
+  });
+
+  it("starts 234A the day after the due date and 234B on 1 April of the AY", () => {
+    expect(start234A("2026-07-31", pack)).toBe("2026-08-01");
+    expect(start234A("2026-12-31", pack)).toBe("2027-01-01");
+    expect(start234B(pack)).toBe("2026-04-01");
+  });
+
+  it("rejects an impossible date", () => {
+    expect(() => interestMonths("2026-04-01", "2026-02-30", true)).toThrow(
+      /real date/,
+    );
   });
 });
 

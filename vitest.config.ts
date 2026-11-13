@@ -9,5 +9,10 @@ export default defineConfig({
     // performance (the hostile-label AIS case) asserts its own elapsed time
     // inline, so a longer outer timeout does not weaken it.
     testTimeout: 30_000,
+    // Only this repo's own suite. Vitest's default glob also collects test
+    // files under .claude/worktrees/, where Claude Code keeps session
+    // checkouts of other commits: one leftover worktree made `pnpm test` run a
+    // stale copy of every test beside the real ones (302 instead of 151).
+    include: ["tests/**/*.test.ts"],
   },
 });

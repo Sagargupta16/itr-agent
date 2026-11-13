@@ -575,3 +575,283 @@ describe("itr-agent server", () => {
     expect(text).toContain("never file on my behalf");
   });
 });
+
+/** Encrypt a synthetic AIS document the way the portal export is laid out. */
+function encryptAis(doc: unknown): string {
+  const iv = randomBytes(16);
+  const salt = randomBytes(16);
+  const key = pbkdf2Sync("abcde1234fGQ39%*g01011990", salt, 1000, 32, "sha256");
+  const cipher = createCipheriv("aes-256-cbc", key, iv);
+  return (
+    iv.toString("hex") +
+    salt.toString("hex") +
+    Buffer.concat([
+      cipher.update(JSON.stringify(doc), "utf8"),
+      cipher.final(),
+    ]).toString("base64")
+  );
+}
+
+const SYNTHETIC_AIS = {
+  partA: { columnLabel: ["Name", "PAN"], columnData: [["Test", "ABCDE1234F"]] },
+  partB: {
+    sections: [
+      {
+        title: "TDS/TCS Information",
+        elements: [
+          {
+            title: "Salary",
+            l1: {
+              columnLabel: ["TAN", "Section", "Amount Paid/Credited"],
+              columnData: [
+                ["ABCD12345E", "192", "900000"],
+                ["ABCD12345E", "192", "600000"],
+                // 192A is EPF withdrawal TDS, not salary.
+                ["ABCD12345E", "192A", "50000"],
+              ],
+            },
+          },
+        ],
+      },
+      {
+        title: "SFT Information",
+        elements: [
+          {
+            title: "Interest from savings bank",
+            l1: {
+              columnLabel: ["Information Code", "Amount"],
+              columnData: [
+                ["SFT-016", "1200.50"],
+                ["SFT-016", "800.25"],
+              ],
+            },
+          },
+        ],
+      },
+    ],
+  },
+};
+
+describe("documents read by the tools, not copied by the model", () => {
+  it("parse_ais sums groups and section-192 salary in code", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "itr-ais-totals-"));
+    try {
+      const path = join(dir, "ais.json");
+      await writeFile(path, encryptAis(SYNTHETIC_AIS));
+      const client = await connectedClient();
+      const result = await client.callTool({
+        name: "parse_ais",
+        arguments: { path, pan: "ABCDE1234F", dob: "01011990" },
+      });
+      const sc = result.structuredContent as {
+        totals: {
+          groups: { key: string; rows: number; amount: number }[];
+          salaryByTan: Record<string, number>;
+        };
+      };
+      expect(sc.totals.salaryByTan).toEqual({ ABCD12345E: 1500000 });
+      const interest = sc.totals.groups.find((g) =>
+        g.key.includes("Interest from savings bank"),
+      );
+      expect(interest).toMatchObject({ rows: 2, amount: 2000.75 });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("reconcile_documents reads the 26AS and AIS files and sums the named groups", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "itr-reconcile-files-"));
+    try {
+      const ais = join(dir, "ais.json");
+      await writeFile(ais, encryptAis(SYNTHETIC_AIS));
+      const f26 = join(dir, "26as.txt");
+      await writeFile(
+        f26,
+        [
+          "Permanent Account Number (PAN) of the Assessee: ABCDE1234F",
+          "PART I - Details of Tax Deducted at Source",
+          "1^ABCD12345E^ACME LTD^",
+          "^^^192^31-Mar-2026^F^15-Apr-2026^^1500000.00^150000.00^150000.00^",
+        ].join("\n"),
+      );
+      const client = await connectedClient();
+      const result = await client.callTool({
+        name: "reconcile_documents",
+        arguments: {
+          form26asPath: f26,
+          aisFile: {
+            path: ais,
+            pan: "ABCDE1234F",
+            dob: "01011990",
+            interestGroups: [
+              "SFT Information | Interest from savings bank | SFT-016",
+            ],
+          },
+          form16: [
+            { tan: "ABCD12345E", grossSalary: 1500000, tdsDeposited: 150000 },
+          ],
+          return: { tdsClaimed: 160000, interestDeclared: 0 },
+        },
+      });
+      expect(result.isError).toBeFalsy();
+      const sc = result.structuredContent as {
+        findings: { id: string; figures?: { a: number } }[];
+        checksRun: string[];
+        fromFiles: { form26as: { tdsRows: number } };
+      };
+      // H1: 1,60,000 claimed against 1,50,000 deposited in the 26AS file.
+      expect(sc.findings.find((f) => f.id === "H1")?.figures?.a).toBe(160000);
+      // H4: the named AIS interest group (1,200.50 + 800.25) against nil declared.
+      expect(sc.findings.find((f) => f.id === "H4")?.figures?.a).toBe(2000.75);
+      // M3 ran on the AIS section-192 salary and found it equal to Form 16.
+      expect(sc.checksRun).toContain("M3");
+      expect(sc.findings.some((f) => f.id === "M3")).toBe(false);
+      expect(sc.fromFiles.form26as.tdsRows).toBe(1);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("reconcile_documents names an AIS group key that does not exist", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "itr-reconcile-badkey-"));
+    try {
+      const ais = join(dir, "ais.json");
+      await writeFile(ais, encryptAis(SYNTHETIC_AIS));
+      const client = await connectedClient();
+      const result = await client.callTool({
+        name: "reconcile_documents",
+        arguments: {
+          aisFile: {
+            path: ais,
+            pan: "ABCDE1234F",
+            dob: "01011990",
+            interestGroups: ["no such group"],
+          },
+        },
+      });
+      expect(result.isError).toBeTruthy();
+      expect(JSON.stringify(result.content)).toContain("no group with key");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("inputs that used to need the model's own judgement or arithmetic", () => {
+  it("compute_tax refuses a house-property loss without its type", async () => {
+    const client = await connectedClient();
+    const result = await client.callTool({
+      name: "compute_tax",
+      arguments: {
+        regime: "old",
+        salaryIncome: 1500000,
+        housePropertyLoss: 300000,
+      },
+    });
+    expect(result.isError).toBeTruthy();
+    expect(JSON.stringify(result.content)).toContain("housePropertyType");
+    const typed = await client.callTool({
+      name: "compare_regimes",
+      arguments: {
+        salaryIncome: 1500000,
+        housePropertyLoss: 300000,
+        housePropertyType: "selfOccupied",
+      },
+    });
+    const sc = typed.structuredContent as {
+      newRegime: { housePropertyLossDisallowed: number };
+      oldRegime: { housePropertyLossDisallowed: number };
+    };
+    expect(sc.newRegime.housePropertyLossDisallowed).toBe(300000);
+    expect(sc.oldRegime.housePropertyLossDisallowed).toBe(100000);
+  });
+
+  it("compute_interest_234 counts the months from dates", async () => {
+    const client = await connectedClient();
+    const result = await client.callTool({
+      name: "compute_interest_234",
+      arguments: {
+        assessedTax: 50000,
+        filingDate: "2026-09-15",
+        form: "ITR-2",
+      },
+    });
+    const sc = result.structuredContent as {
+      section234A: { months: number; interest: number };
+      section234B: { months: number; interest: number };
+      monthsUsed: Record<string, string>;
+    };
+    // 234A: due 31 July, interest from 1 August to 15 September = 2 months,
+    // 1% of 50,000 x 2 = 1,000. 234B: 1 April to 15 September = 6 months,
+    // nothing paid in advance, 1% x 50,000 x 6 = 3,000.
+    expect(sc.section234A).toMatchObject({ months: 2, interest: 1000 });
+    expect(sc.section234B).toMatchObject({ months: 6, interest: 3000 });
+    expect(sc.monthsUsed.s234A).toContain("2026-08-01");
+  });
+
+  it("compute_interest_234 reads a self-assessment payment date", async () => {
+    const client = await connectedClient();
+    const result = await client.callTool({
+      name: "compute_interest_234",
+      arguments: {
+        assessedTax: 50000,
+        paidOrAssessedDate: "2026-09-15",
+        selfAssessmentPayments: [{ date: "2026-06-10", amount: 30000 }],
+      },
+    });
+    const sc = result.structuredContent as {
+      section234B: {
+        interest: number;
+        segments: { months: number; base: number }[];
+      };
+    };
+    // 3 months (Apr-Jun) on 50,000 = 1,500, then 3 months (Jul-Sep) on 20,000 = 600.
+    expect(sc.section234B.segments.map((s) => [s.months, s.base])).toEqual([
+      [3, 50000],
+      [3, 20000],
+    ]);
+    expect(sc.section234B.interest).toBe(2100);
+  });
+
+  it("compute_interest_234 needs a 234B period one way or the other", async () => {
+    const client = await connectedClient();
+    const result = await client.callTool({
+      name: "compute_interest_234",
+      arguments: { assessedTax: 50000 },
+    });
+    expect(result.isError).toBeTruthy();
+    expect(JSON.stringify(result.content)).toContain("paidOrAssessedDate");
+  });
+
+  it("compute_hra checks the city against the fy's metro list", async () => {
+    const client = await connectedClient();
+    const period = {
+      months: 12,
+      basic: 600000,
+      hraReceived: 300000,
+      rentPaid: 360000,
+    };
+    const metro = await client.callTool({
+      name: "compute_hra",
+      arguments: { periods: [{ ...period, city: "Bombay" }] },
+    });
+    const bengaluru = await client.callTool({
+      name: "compute_hra",
+      arguments: { periods: [{ ...period, city: "Bangalore" }] },
+    });
+    const m = metro.structuredContent as { periods: { limbC: number }[] };
+    const b = bengaluru.structuredContent as {
+      periods: { limbC: number }[];
+      notes: string[];
+    };
+    // FY 2025-26 lists four metros; Bombay is Mumbai, Bengaluru is not on it.
+    expect(m.periods[0]?.limbC).toBe(300000);
+    expect(b.periods[0]?.limbC).toBe(240000);
+    expect(b.notes.some((n) => n.includes("not on the FY 2025-26"))).toBe(true);
+    const neither = await client.callTool({
+      name: "compute_hra",
+      arguments: { periods: [period] },
+    });
+    expect(neither.isError).toBeTruthy();
+  });
+});

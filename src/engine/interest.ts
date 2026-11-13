@@ -121,9 +121,10 @@ export function interest234B(
   const effectivePayments = payments.filter(
     (p) => p.monthsFromApril < input.months,
   ).length;
+  const ratePct = `${Math.round(rate * 10000) / 100}%`;
   const note = effectivePayments
-    ? `1%/month from 1 April of the AY, principal reduced by ${effectivePayments} self-assessment payment(s) under s.140A (s.234B(2)); part month = full month`
-    : `1%/month on ${base} for ${input.months} month(s) from 1 April of the AY (part month = full month)${payments.length ? "; the supplied s.140A payment(s) fall at or after the end of the interest window and did not reduce it" : ""}`;
+    ? `${ratePct}/month from 1 April of the AY, principal reduced by ${effectivePayments} self-assessment payment(s) under s.140A (s.234B(2)); part month = full month`
+    : `${ratePct}/month on ${base} for ${input.months} month(s) from 1 April of the AY (part month = full month)${payments.length ? "; the supplied s.140A payment(s) fall at or after the end of the interest window and did not reduce it" : ""}`;
 
   return {
     applies: true,
@@ -181,7 +182,7 @@ export function interest234A(
     base,
     months,
     interest: Math.round(base * rate * months),
-    note: `1%/month on ${base} for ${months} month(s) from the day after the due date to the date of filing (part month = full month)`,
+    note: `${Math.round(rate * 10000) / 100}%/month on ${base} for ${months} month(s) from the day after the due date to the date of filing (part month = full month)`,
   };
 }
 

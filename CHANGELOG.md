@@ -3,6 +3,38 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.6.0] - 2026-11-13
+
+The fixes from a whole-repo audit on 2026-11-13. The main theme: the model no longer does glue arithmetic between tools. Computed tax for every input that was valid before is unchanged (the 58 validation figures still match); what changes is the house-property carry-forward, two inputs that are now required in a case that was wrong without them, and new optional inputs and outputs.
+
+Minor, not patch: `compute_tax` and `compare_regimes` refuse a house-property loss without `housePropertyType`, `compute_interest_234` needs a 234B period one way or another, `compute_hra` periods need a city or `isMetro`, and rule pack 1.5.0 drops keys (a pre-1.5.0 pack no longer loads).
+
+### Fixed
+
+- **Self-occupied home-loan interest was reported as a loss carried forward.** Under the new regime, interest on a self-occupied house is not deductible at all (s.115BAC(2)(i); the incometax.gov.in new-vs-old regime FAQ: "Interest on borrowed capital for Self-occupied property is not allowed as a deduction"), yet 3 lakh of it came back as 3 lakh carried forward. Under the old regime, s.24(b) caps it at Rs 2 lakh, yet 3 lakh came back as 2 lakh set off plus 1 lakh carried forward. The new `housePropertyType` (`selfOccupied` or `letOut`) decides; the part above the cap is reported as `housePropertyLossDisallowed` with a note citing the section, and is never carried forward. The tax figure itself did not change in either case. The tools require the type whenever a loss is passed, because each default is wrong for one kind of filer; the engine defaults to `letOut`, the old behaviour, for direct callers. Source: s.24(b) second proviso, s.115BAC(2)(i), incometax.gov.in FAQ
+- **reconcile_documents ran its notice checks on totals the model added up.** The AIS interest, dividend and salary figures had to be summed by the model from `parse_ais` rows, and the 26AS rows copied back into the arguments (about 11k tokens for 300 rows). `reconcile_documents` now takes `form26asPath` and `aisFile` and reads the files itself; `parse_ais` returns `totals` summed in code: every section/element/code group, and salary per employer TAN from section 192 TDS rows (not 192A, and not the Annexure-II salary that repeats it). Interest and dividend groups are named by the caller (`interestGroups`, `dividendGroups`), because a bank can report the same interest as a TDS row and again as an SFT row
+- **234A and 234B month counts were worked out by the model.** `compute_interest_234` takes `filingDate` with `form` (or `dueDate`), `paidOrAssessedDate`, and a `date` on each self-assessment payment, and counts the months in code under Rule 119A(b), reading the pack's `partMonthIsFullMonth` and the `s234A`/`s234B` `fromDate` keys for the first time. The counts used are returned in `monthsUsed`. Month counts are still accepted, and passing both a count and the date for the same section is an error
+- **HRA metro status was decided from a description written for one year.** `compute_hra` periods take `city`, matched against the fy's `hra.metroCities` (older names such as Bombay, Madras and Bangalore are understood), with the result in `notes`. FY 2025-26 still lists four metros, so Bengaluru and Pune are non-metro; a FY 2026-27 pack with eight will change the answer with no code edit. `isMetro` remains as the fallback
+- **FY figures were hardcoded in tool descriptions and messages.** Caps, rates, ceilings and the metro list in the tool descriptions, the `file_my_itr` prompt, the `list_deductions` notes, the form picker's reasons, the reconcile remedies and the 234C safe-harbour text are now read from the rule pack. Found by sweeping every number in tool-facing text
+- `pnpm audit` reported 9 advisories (8 moderate, 1 low) on hono, @hono/node-server and qs, which the 0.5.6 entry below had called clean. Overrides raised: hono `>=4.13.16` (resolves 4.13.18), new `@hono/node-server: '>=2.1.6 <3'` (2.1.8), qs `>=6.16.1` (6.17.1); `@modelcontextprotocol/sdk` 1.32.1 to 1.32.2. The stdio server imports none of the three; they back the SDK's HTTP transports. `pnpm audit` is clean
+- A leftover Claude Code session worktree under `.claude/worktrees/` made local `pnpm lint` fail ("nested root configuration") and `pnpm test` run a stale copy of every test (302 instead of 151). Vitest now collects only `tests/**/*.test.ts` and biome force-ignores `**/.claude`. CI was never affected
+- `publish.yml` no longer restores the pnpm cache in its release jobs: npm's trusted-publishing guide says never to cache in release builds, and a cache another workflow wrote should not feed what ships
+- The CI and release checks handed the server's whole reply to `node -e` as one command-line argument. The longer tool descriptions took the `tools/list` reply from 25,014 to 30,014 bytes, and with its quotes escaped that passed the 32,767-character Windows limit: every windows-latest leg failed with "Argument list too long" (exit 126), reproduced locally in Git Bash. All five such steps now pipe the reply on stdin
+
+### Added
+
+- `recommend_itr_form`: `vehicles44AE`, checked against the pack's 44AE limit of 10 goods carriages (s.44AE, already in the pack and unread until now); an unknown count is named in `notes`
+- `compute_tax`: `housePropertyLossDisallowed` and `notes`
+- 22 tests (173 total): the four house-property cases with their statute, Rule 119A month counting including the part-month flag and impossible dates, the 44AE limit, the house-property type requirement through both tools, interest from dates and from a self-assessment payment date, HRA by city with an alias and a non-metro, `parse_ais` totals, reconcile from both files, and an unknown AIS group key. The self-occupied tests were mutation-checked: switching the branch off fails both
+
+### Changed
+
+- Rule pack 1.5.0. Removed, because nothing read them: `employerNps80CCD2.aggregateEmployerContributionCap` in both regimes (the s.17(2)(vii) Rs 7.5 lakh perquisite cap needs PF and superannuation inputs this engine does not take), `capitalGains.grandfatheringDate` / `rateChangeBoundary` / `debtSlabAcquisitionBoundary` (transaction-date rules are not split yet; they return with that feature), `advanceTax.interest234B_ratePerMonth` / `interest234C_ratePerMonth` (duplicates of `interest.ratePerMonth`), `tdsCorrectionWindow.yearsFrom2026` (the description carries it), and `oldRegime.hraMetros` (a second copy of `hra.metroCities`; `list_deductions` reads the one list). Added: `itrEligibility.presumptive.deemedProfit44AD` (8%), `deemedProfit44ADDigital` (6%) and `deemedProfit44ADA` (50%), source s.44AD(1) and s.44ADA(1); `deductionCaps.80D_preventiveCheckup` (Rs 5,000), source s.80D. `validatePack()` rejects a pack without the 1.5.0 keys
+- `computeHra` reads `hra.regimes` instead of testing for the new regime in code
+- The text copy of every tool result is compact JSON. The MCP spec asks for a text copy beside `structuredContent`; the indentation made it about a third larger (a 300-row AIS: 85,572 characters pretty, 57,353 compact)
+- `file_my_itr` asks whether the house is self-occupied or let out, sends the files to `reconcile_documents`, and passes dates to the interest tool
+- README: the Install note quotes the trusted-publisher check's own answer and points at the latest release's `.mcpb`; the roadmap marks this release v0.6 and moves the loss set-off engine, Form 16 PDF and broker parsers to v0.7
+
 ## [0.5.7] - 2026-11-02
 
 Registry name only. No computed figure, tool input or tool output changes.

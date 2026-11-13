@@ -23,11 +23,17 @@ export interface TaxInput {
    * private / 14% government old regime, `governmentEmployer` decides). */
   employerNps80CCD2?: number;
   governmentEmployer?: boolean;
-  /** Loss under the head house property (s.24(b) interest on a self-occupied
-   * home, or a let-out property's net loss) as a POSITIVE number. Set off
-   * against other heads up to the s.71(3A) cap; the excess is carried forward
-   * under s.71B and is reported, not set off. */
+  /** Loss under the head house property as a POSITIVE number: s.24(b)
+   * interest on a self-occupied home, or a let-out property's net loss. */
   housePropertyLoss?: number;
+  /** Which kind of property the loss comes from. A self-occupied home's loss
+   * is its s.24(b) interest, capped by the second proviso (old regime) and not
+   * deductible at all under s.115BAC(2)(i) (new regime), so the part above the
+   * cap is neither set off nor carried forward. A let-out loss has no s.24(b)
+   * cap: it is set off up to the s.71(3A) limit and the rest carried forward
+   * under s.71B. Defaults to `letOut` for direct callers of the engine; the
+   * MCP tools require it whenever a loss is passed. */
+  housePropertyType?: "selfOccupied" | "letOut";
   ageBand: AgeBand;
 }
 
@@ -40,6 +46,9 @@ export interface TaxBreakdown {
   deductionsClaimed: number;
   /** s.80CCD(2) actually allowed after the salary-percentage cap. */
   employerNps80CCD2Allowed: number;
+  /** Self-occupied interest that is not deductible at all: above the s.24(b)
+   * cap (old regime) or all of it (new regime). Never set off or carried. */
+  housePropertyLossDisallowed: number;
   /** House-property loss set off this year (s.71(3A) cap applied). */
   housePropertyLossSetOff: number;
   /** House-property loss above the cap, carried forward under s.71B. */
@@ -61,6 +70,8 @@ export interface TaxBreakdown {
   cess: number;
   totalTax: number;
   effectiveRatePct: number;
+  /** Why an input was trimmed (today: the s.24(b) self-occupied limit). */
+  notes: string[];
   disclaimers: string[];
 }
 
@@ -418,11 +429,32 @@ export function computeTax(input: TaxInput, pack: RulePack): TaxBreakdown {
     input.salaryIncome * npsPct,
   );
 
+  // A self-occupied home's loss IS its s.24(b) interest (annual value nil), and
+  // that interest is deductible only up to the second-proviso cap in the old
+  // regime and not at all in the new one (s.115BAC(2)(i); the incometax.gov.in
+  // new-regime FAQ says the same). What the cap removes is not a loss: it is
+  // neither set off nor carried forward.
+  const notes: string[] = [];
+  const hpClaimed = Math.max(0, input.housePropertyLoss ?? 0);
+  const selfOccupied = input.housePropertyType === "selfOccupied";
+  const sopCap =
+    input.regime === "old"
+      ? (pack.oldRegime.deductionCaps["24b_selfOccupied"] ?? 0)
+      : 0;
+  const hpLoss = selfOccupied ? Math.min(hpClaimed, sopCap) : hpClaimed;
+  const housePropertyLossDisallowed = hpClaimed - hpLoss;
+  if (housePropertyLossDisallowed > 0) {
+    notes.push(
+      input.regime === "new"
+        ? `s.115BAC(2)(i): interest on a self-occupied house is not deductible under the new regime, so the Rs ${round(housePropertyLossDisallowed).toLocaleString("en-IN")} claimed is not a loss and nothing is set off or carried forward.`
+        : `s.24(b) second proviso: interest on a self-occupied house is deductible up to Rs ${sopCap.toLocaleString("en-IN")}; the Rs ${round(housePropertyLossDisallowed).toLocaleString("en-IN")} above that is not a loss and is not carried forward.`,
+    );
+  }
+
   // s.71(3A): house-property loss set off against other heads only up to the
   // cap; s.71B carries the rest forward for eight years against HP income.
   // s.115BAC(2)(ii)(b) bars the inter-head set-off outright under the new
-  // regime, so there the whole loss is carried forward and nothing is set off.
-  const hpLoss = Math.max(0, input.housePropertyLoss ?? 0);
+  // regime, so there a let-out loss is carried forward and nothing is set off.
   const hpCap =
     input.regime === "old"
       ? (pack.oldRegime.deductionCaps.housePropertyLossSetOff ?? 0)
@@ -487,6 +519,7 @@ export function computeTax(input: TaxInput, pack: RulePack): TaxBreakdown {
     standardDeduction,
     deductionsClaimed,
     employerNps80CCD2Allowed: round(employerNps80CCD2Allowed),
+    housePropertyLossDisallowed: round(housePropertyLossDisallowed),
     housePropertyLossSetOff: round(housePropertyLossSetOff),
     housePropertyLossCarriedForward: round(housePropertyLossCarriedForward),
     taxableNormalIncome,
@@ -505,6 +538,7 @@ export function computeTax(input: TaxInput, pack: RulePack): TaxBreakdown {
     totalTax,
     effectiveRatePct:
       grossIncome > 0 ? Math.round((totalTax / grossIncome) * 10000) / 100 : 0,
+    notes,
     disclaimers,
   };
 }

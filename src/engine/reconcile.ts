@@ -220,8 +220,7 @@ export function reconcile(
           b: input.return.interestDeclared,
           delta,
         },
-        remedy:
-          "Report GROSS accrued interest and claim 80TTA (10K) / 80TTB (50K senior) separately -- netting before reporting triggers 143(1)(a). Joint account? Use AIS feedback 'Information relates to another PAN/Year'.",
+        remedy: `Report GROSS accrued interest and claim 80TTA (Rs ${(pack.oldRegime.deductionCaps["80TTA"] ?? 0).toLocaleString("en-IN")}) / 80TTB (Rs ${(pack.oldRegime.deductionCaps["80TTB"] ?? 0).toLocaleString("en-IN")}, seniors) separately -- netting before reporting triggers 143(1)(a). Joint account? Use AIS feedback 'Information relates to another PAN/Year'.`,
         noticePreempted: "143(1)(a)",
       });
     }
@@ -431,7 +430,7 @@ export function reconcile(
     checksSkipped,
     tdsByHead: groupTdsByHead(tds26, pack),
     disclaimers: [
-      "Tolerances beyond the Rs 10 statutory rounding slack are tool heuristics, not CPC rules.",
+      `Tolerances beyond the Rs ${pack.reconcile.toleranceRupees.pass} statutory rounding slack are tool heuristics, not CPC rules.`,
       "A return figure lower than form figures may be legitimately explained by HRA exemption, standard deduction, or Chapter VI-A deductions -- review findings before acting.",
       "Not tax advice. Verify against the official portal before filing.",
     ],

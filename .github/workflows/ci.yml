@@ -54,8 +54,8 @@ jobs:
             '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"compute_tax","arguments":{"regime":"new","otherIncome":1500000}}}' \
             | node dist/index.js 2>/dev/null)
           echo "$out"
-          node -e '
-            const lines = process.argv[1].trim().split("\n").filter(Boolean).map(JSON.parse);
+          printf '%s' "$out" | node -e '
+            const lines = require("node:fs").readFileSync(0, "utf8").trim().split("\n").filter(Boolean).map(JSON.parse);
             const byId = new Map(lines.filter((m) => m.id).map((m) => [m.id, m]));
             const get = (id) => {
               const m = byId.get(id);
@@ -79,10 +79,14 @@ jobs:
             if (!taxed.disclaimers || !taxed.disclaimers.length) {
               throw new Error("disclaimers missing from compute_tax output");
             }
-          ' "$out"
+          '
 
       # stdout is the MCP channel: one stray console.log corrupts the protocol.
       # Every line the server writes must parse as JSON-RPC.
+      # Server output reaches the checker on stdin, never as an argument: the
+      # tools/list reply is ~30 KB, and with its quotes escaped it passed the
+      # 32,767-character Windows command-line limit ("Argument list too long",
+      # exit 126 on every windows-latest leg of PR #29).
       - name: Assert stdout carries only JSON-RPC
         shell: bash
         run: |
@@ -91,8 +95,8 @@ jobs:
             '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
             '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
             | node dist/index.js 2>/dev/null)
-          node -e '
-            const lines = process.argv[1].split("\n").filter((l) => l.trim());
+          printf '%s' "$out" | node -e '
+            const lines = require("node:fs").readFileSync(0, "utf8").split("\n").filter((l) => l.trim());
             if (!lines.length) throw new Error("server wrote nothing to stdout");
             for (const line of lines) {
               const msg = JSON.parse(line);
@@ -101,7 +105,7 @@ jobs:
               }
             }
             console.log(`ok ${lines.length} JSON-RPC lines, no stray stdout`);
-          ' "$out"
+          '
 
   package:
     # The npm tarball is what users actually run via npx. `files` must carry both
@@ -159,8 +163,8 @@ jobs:
             '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
             '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"compute_tax","arguments":{"regime":"new","otherIncome":1500000}}}' \
             | npx itr-agent 2>/dev/null)
-          node -e '
-            const msg = process.argv[1].split("\n").filter(Boolean).map(JSON.parse)
+          printf '%s' "$out" | node -e '
+            const msg = require("node:fs").readFileSync(0, "utf8").split("\n").filter(Boolean).map(JSON.parse)
               .find((m) => m.id === 2);
             const total = msg && msg.result && msg.result.structuredContent
               && msg.result.structuredContent.totalTax;
@@ -168,7 +172,7 @@ jobs:
               throw new Error(`installed package computed ${total}, expected 109200`);
             }
             console.log("ok installed tarball computes 1,09,200");
-          ' "$out"
+          '
 
   mcpb:
     # The one-click Claude Desktop bundle inlines every dependency, so it has to
@@ -197,8 +201,8 @@ jobs:
             '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
             '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"compute_tax","arguments":{"regime":"new","otherIncome":1500000}}}' \
             | node server/index.js 2>/dev/null)
-          node -e '
-            const msg = process.argv[1].split("\n").filter(Boolean).map(JSON.parse)
+          printf '%s' "$out" | node -e '
+            const msg = require("node:fs").readFileSync(0, "utf8").split("\n").filter(Boolean).map(JSON.parse)
               .find((m) => m.id === 2);
             const total = msg && msg.result && msg.result.structuredContent
               && msg.result.structuredContent.totalTax;
@@ -206,7 +210,7 @@ jobs:
               throw new Error(`unpacked bundle computed ${total}, expected 109200`);
             }
             console.log("ok unpacked .mcpb computes 1,09,200");
-          ' "$out"
+          '
 
       - uses: actions/upload-artifact@v7
         with:

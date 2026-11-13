@@ -1,5 +1,6 @@
 import { isUtf8 } from "node:buffer";
 import { createDecipheriv, pbkdf2Sync } from "node:crypto";
+import { sumRupees } from "./form26as.js";
 
 /** AIS (Annual Information Statement) JSON parser.
  *
@@ -178,10 +179,97 @@ export interface AisRow {
   code?: string;
 }
 
+/** Rows that share a section, an element and an information code, summed in
+ * code. `key` is stable for a given file, so reconcile_documents can be told
+ * "count these groups as interest" and add them up itself. */
+export interface AisGroupTotal {
+  key: string;
+  sectionTitle: string;
+  elementTitle: string;
+  code: string;
+  rows: number;
+  amount: number;
+}
+
+export interface AisTotals {
+  groups: AisGroupTotal[];
+  /** Salary per employer TAN from TDS rows under section 192 (not 192A, which
+   * is EPF withdrawal). Only the TDS block is read: Form 24Q Annexure-II
+   * salary in "Other Information" describes the same pay again. */
+  salaryByTan: Record<string, number>;
+}
+
 export interface AisParsed {
   taxpayer: Record<string, string>;
   rows: AisRow[];
+  totals: AisTotals;
   warnings: string[];
+}
+
+const TAN_VALUE_RE = /^[A-Z]{4}\d{5}[A-Z]$/;
+/** Section 192 as an information code ("TDS-192" or "192"), never 192A. */
+const SALARY_CODE_RE = /(?:^|[^0-9A-Z])192(?:[^0-9A-Z]|$)/i;
+
+export function groupKey(
+  row: Pick<AisRow, "sectionTitle" | "elementTitle" | "code">,
+): string {
+  return [row.sectionTitle, row.elementTitle, row.code ?? ""].join(" | ");
+}
+
+/** Sum the parsed rows by group, and salary by TAN, without the model adding
+ * anything up. Classifying a group as interest or dividend is left to the
+ * caller on purpose: a bank can report the same interest once as a TDS row and
+ * again as an SFT row, and only someone reading the titles can tell. */
+export function aisTotals(rows: AisRow[]): AisTotals {
+  const groups = new Map<string, AisGroupTotal & { amounts: number[] }>();
+  const salary = new Map<string, number[]>();
+
+  for (const row of rows) {
+    const key = groupKey(row);
+    const group = groups.get(key) ?? {
+      key,
+      sectionTitle: row.sectionTitle,
+      elementTitle: row.elementTitle,
+      code: row.code ?? "",
+      rows: 0,
+      amount: 0,
+      amounts: [],
+    };
+    group.rows += 1;
+    if (row.amount !== undefined) group.amounts.push(row.amount);
+    groups.set(key, group);
+
+    // The section usually arrives as a "Section" or "Information Code" column;
+    // when a layout omits it, the element title ("Salary (Section 192)") names it.
+    const section192 =
+      row.code !== undefined
+        ? SALARY_CODE_RE.test(row.code)
+        : SALARY_CODE_RE.test(row.elementTitle);
+    if (
+      row.amount !== undefined &&
+      /tds/i.test(row.sectionTitle) &&
+      section192
+    ) {
+      const tan = Object.values(row.fields).find((v) =>
+        TAN_VALUE_RE.test(v.trim()),
+      );
+      if (tan) {
+        const list = salary.get(tan.trim()) ?? [];
+        list.push(row.amount);
+        salary.set(tan.trim(), list);
+      }
+    }
+  }
+
+  return {
+    groups: [...groups.values()].map(({ amounts, ...g }) => ({
+      ...g,
+      amount: sumRupees(amounts),
+    })),
+    salaryByTan: Object.fromEntries(
+      [...salary.entries()].map(([tan, amounts]) => [tan, sumRupees(amounts)]),
+    ),
+  };
 }
 
 function labelText(l: AisLabel): string {
@@ -248,6 +336,7 @@ export function parseAisDocument(doc: unknown): AisParsed {
     return {
       taxpayer: {},
       rows: [],
+      totals: { groups: [], salaryByTan: {} },
       warnings: [
         "decrypted payload is not a JSON object -- nothing to normalize. Check the AIS download, and use the CSV export as a fallback.",
       ],
@@ -312,5 +401,5 @@ export function parseAisDocument(doc: unknown): AisParsed {
     }
   }
 
-  return { taxpayer, rows, warnings };
+  return { taxpayer, rows, totals: aisTotals(rows), warnings };
 }

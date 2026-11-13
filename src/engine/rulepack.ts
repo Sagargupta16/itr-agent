@@ -37,10 +37,13 @@ export interface Interest234CConfig {
 
 export interface InterestConfig {
   ratePerMonth: number;
-  /** Rule 119A: any part of a month counts as a full month. */
+  /** Rule 119A(b): any part of a month counts as a full month. Read by the
+   * date-to-months conversion in dates.ts. */
   partMonthIsFullMonth: boolean;
-  s234A: { ratePerMonth: number; fromDate: string };
-  s234B: { trigger: string; fromDate: string };
+  /** 234A runs from the day after the s.139(1) due date (`dueDatePlus1`). */
+  s234A: { ratePerMonth: number; fromDate: "dueDatePlus1" };
+  /** 234B runs from 1 April of the assessment year (`AY-04-01`). */
+  s234B: { trigger: string; fromDate: "AY-04-01" };
   s234C: Interest234CConfig;
 }
 
@@ -82,8 +85,6 @@ export interface RulePack {
      * salary for every employer where income is chargeable under 115BAC(1A). */
     employerNps80CCD2: {
       pctOfSalary: number;
-      /** s.17(2)(vii): employer PF+NPS+superannuation above this is a perquisite. */
-      aggregateEmployerContributionCap: number;
     };
     surchargeCapRate: number;
   };
@@ -95,21 +96,19 @@ export interface RulePack {
     slabsSuperSenior: Slab[];
     standardDeduction: number;
     rebate87A: Rebate87A;
+    /** Chapter VI-A caps plus the two house-property limits the engine reads:
+     * `24b_selfOccupied` (s.24(b) second proviso) and `housePropertyLossSetOff`
+     * (s.71(3A)). validatePack requires both. */
     deductionCaps: Record<string, number>;
-    hraMetros: string[];
     employerNps80CCD2: {
       pctOfSalaryPrivate: number;
       pctOfSalaryGovernment: number;
-      aggregateEmployerContributionCap: number;
     };
   };
   capitalGains: {
     stcg111A: number;
     ltcg112A: number;
     ltcg112AExemption: number;
-    grandfatheringDate: string;
-    rateChangeBoundary: string;
-    debtSlabAcquisitionBoundary: string;
     /** s.111A / s.112A(2) provisos: unexhausted basic exemption reduces gains. */
     basicExemptionSetOff: { against111A: boolean; against112A: boolean };
   };
@@ -126,8 +125,6 @@ export interface RulePack {
   advanceTax: {
     threshold: number;
     installments: { dueDate: string; cumulativePct: number }[];
-    interest234C_ratePerMonth: number;
-    interest234B_ratePerMonth: number;
     section234B_paidThresholdPct: number;
   };
   deadlines: Record<string, string>;
@@ -151,10 +148,16 @@ export interface RulePack {
       receiptsCap44ADA: number;
       receiptsCap44ADADigital: number;
       maxVehicles44AE: number;
+      /** s.44AD(1): deemed profit as a share of turnover (cash and other). */
+      deemedProfit44AD: number;
+      /** s.44AD(1) proviso: the lower rate on turnover received digitally. */
+      deemedProfit44ADDigital: number;
+      /** s.44ADA(1): deemed profit as a share of gross receipts. */
+      deemedProfit44ADA: number;
     };
   };
   /** How long a deductor can still file a TDS correction statement. */
-  tdsCorrectionWindow: { description: string; yearsFrom2026: number };
+  tdsCorrectionWindow: { description: string };
   rounding: {
     /** s.288A: total income rounded to the nearest multiple of this. */
     income288A: number;
@@ -284,6 +287,24 @@ function validatePack(fy: string, pack: RulePack): void {
   ) {
     throw new Error(
       `rule pack fy${fy}.json predates pack 1.4.0: needs employerNps80CCD2 on both regimes and itrEligibility.{maxHouseProperties, scheduleALIncomeThreshold, presumptive}.`,
+    );
+  }
+
+  // Pack 1.5.0: the engine reads the s.24(b) self-occupied cap and the Rule 119A
+  // part-month flag, and the checklist quotes the presumptive deemed-profit
+  // rates. A pack without them would fall back to a figure written in code.
+  const caps = pack.oldRegime.deductionCaps ?? {};
+  const p = pack.itrEligibility.presumptive;
+  if (
+    typeof caps["24b_selfOccupied"] !== "number" ||
+    typeof caps.housePropertyLossSetOff !== "number" ||
+    typeof pack.interest.partMonthIsFullMonth !== "boolean" ||
+    typeof p.deemedProfit44AD !== "number" ||
+    typeof p.deemedProfit44ADDigital !== "number" ||
+    typeof p.deemedProfit44ADA !== "number"
+  ) {
+    throw new Error(
+      `rule pack fy${fy}.json predates pack 1.5.0: needs oldRegime.deductionCaps.{24b_selfOccupied, housePropertyLossSetOff}, interest.partMonthIsFullMonth and itrEligibility.presumptive.{deemedProfit44AD, deemedProfit44ADDigital, deemedProfit44ADA}.`,
     );
   }
 }
