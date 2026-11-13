@@ -119,7 +119,9 @@ jobs:
             const hasToken = typeof body.token === "string" && body.token.length > 0;
             if (hasToken) body.token = "<redacted>";
             console.log(`exchange HTTP ${status}: ${JSON.stringify(body)}`);
-            if (status !== "200" || !hasToken) {
+            // npm answers a successful exchange with 201 Created, not 200: any
+            // 2xx that carries a token is an accepted publisher.
+            if (!/^2\d\d$/.test(status) || !hasToken) {
               console.error("npmjs.com did not issue a publish token for this workflow. On the package settings page, make the trusted publisher match the claims above: owner, repository, workflow filename publish.yml, environment blank; and allow npm publish, not only npm stage publish.");
               process.exit(1);
             }

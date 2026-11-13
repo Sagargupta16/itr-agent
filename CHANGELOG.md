@@ -20,6 +20,7 @@ Minor, not patch: `compute_tax` and `compare_regimes` refuse a house-property lo
 - A leftover Claude Code session worktree under `.claude/worktrees/` made local `pnpm lint` fail ("nested root configuration") and `pnpm test` run a stale copy of every test (302 instead of 151). Vitest now collects only `tests/**/*.test.ts` and biome force-ignores `**/.claude`. CI was never affected
 - `publish.yml` no longer restores the pnpm cache in its release jobs: npm's trusted-publishing guide says never to cache in release builds, and a cache another workflow wrote should not feed what ships
 - The CI and release checks handed the server's whole reply to `node -e` as one command-line argument. The longer tool descriptions took the `tools/list` reply from 25,014 to 30,014 bytes, and with its quotes escaped that passed the 32,767-character Windows limit: every windows-latest leg failed with "Argument list too long" (exit 126), reproduced locally in Git Bash. All five such steps now pipe the reply on stdin
+- The `publish.yml` trusted-publisher check from 0.5.4 accepted only HTTP 200, but npm answers a successful OIDC exchange with 201 Created. Once the trusted publisher was configured on 2026-11-13, the check got `exchange HTTP 201` with a token and still failed the job, so the first release would have stopped before `npm publish`. Any 2xx carrying a token now passes; a 404 or a 2xx without a token still fails
 
 ### Added
 
