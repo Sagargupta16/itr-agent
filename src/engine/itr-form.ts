@@ -397,7 +397,7 @@ export function filingChecklist(
 
   add(
     "gather",
-    "Collect Form 16",
+    `Collect ${pack.statute.forms.salaryCertificate}`,
     "From every employer of the FY. Part A (TDS) and Part B (salary breakup, exemptions).",
   );
   add(
@@ -436,7 +436,7 @@ export function filingChecklist(
   add(
     "reconcile",
     "Reconcile documents before filing",
-    "Run reconcile_documents (Form 16 vs AIS vs 26AS). Fix mismatches now: TDS over-claims and undeclared AIS interest are the top 143(1)(a) triggers.",
+    `Run reconcile_documents (${pack.statute.forms.salaryCertificate} vs AIS vs 26AS). Fix mismatches now: TDS over-claims and undeclared AIS interest are the top 143(1)(a) triggers.`,
   );
   add(
     "compute",
@@ -451,7 +451,7 @@ export function filingChecklist(
   add(
     "portal",
     "Verify pre-filled data schedule by schedule",
-    "Check salary against Form 16 Part B, TDS against 26AS, interest against AIS. Correct, never assume, the pre-fill.",
+    `Check salary against ${pack.statute.forms.salaryCertificate} Part B, TDS against 26AS, interest against AIS. Correct, never assume, the pre-fill.`,
   );
   if (form !== "ITR-1") {
     const alThreshold = lakh(pack.itrEligibility.scheduleALIncomeThreshold);

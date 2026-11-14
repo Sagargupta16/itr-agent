@@ -1,7 +1,7 @@
 {
   "fy": "2025-26",
   "ay": "2026-27",
-  "rulePackVersion": "1.5.0",
+  "rulePackVersion": "1.6.0",
   "sources": [
     "https://www.incometax.gov.in/iec/foportal/help/individual/return-applicable-1",
     "CBDT Notification 45/2026 (30-Mar-2026): AY 2026-27 ITR forms; ITR-1/ITR-4 admit up to two house properties",
@@ -15,8 +15,23 @@
     "Income-tax Act s.288A/288B (rounding of total income and tax payable) and Rule 119A (interest base)",
     "Income-tax Act s.24(b) second proviso (interest on a self-occupied house capped at Rs 2 lakh) and s.115BAC(2)(i); incometax.gov.in new-vs-old regime FAQ: interest on borrowed capital for a self-occupied property is not allowed under the new regime",
     "Income-tax Act s.44AD(1) (deemed profit 8% of turnover, 6% of turnover received through digital modes) and s.44ADA(1) (50% of gross receipts)",
-    "Income-tax Act s.80D: preventive health check-up payments up to Rs 5,000 count within the 80D limits"
+    "Income-tax Act s.80D: preventive health check-up payments up to Rs 5,000 count within the 80D limits",
+    "Income-tax Act s.23(2) (up to two self-occupied houses at nil annual value, Finance Act 2019), s.24(a) (30% standard deduction), s.24(b) and its second proviso (Rs 2 lakh on a self-occupied house acquired or built with capital borrowed on or after 1 April 1999 and completed within five years, Rs 30,000 otherwise) and the Explanation on pre-construction interest in five equal instalments",
+    "Income-tax Act s.44AE(2): Rs 1,000 per ton of gross vehicle weight per month for a heavy goods vehicle, Rs 7,500 per month for any other goods carriage",
+    "Income-tax Act ss.70, 71, 71B, 72, 73, 74 and 80: set-off order between heads, carry forward of house-property loss (8 years), business loss (8), speculative loss (4) and capital loss (8), and the s.80 condition that only a return filed by the s.139(1) due date carries a loss forward (s.71B excepted)",
+    "Income-tax Act s.234F (late fee Rs 5,000, or Rs 1,000 where total income does not exceed Rs 5 lakh) and s.234-I as inserted by Finance Act 2026 s.16 with effect from 1 March 2026 (revised return beyond nine months: Rs 1,000 where total income does not exceed Rs 5 lakh, Rs 5,000 otherwise)",
+    "Income-tax Act s.44AD(1) and s.44ADA(1) provisos (higher ceiling where cash receipts do not exceed 5% of the total) and s.44AE Explanation (a heavy goods vehicle is one whose gross vehicle weight exceeds 12,000 kg)"
   ],
+  "statute": {
+    "act": "Income-tax Act, 1961",
+    "sectionMap": {},
+    "note": null,
+    "forms": {
+      "salaryCertificate": "Form 16",
+      "claimDeclaration": "Form 12BB (Rule 26C)",
+      "rentDeclaration80GG": "Form 10BA"
+    }
+  },
   "newRegime": {
     "slabs": [
       {
@@ -213,7 +228,13 @@
   },
   "lateFee234F": {
     "default": 5000,
-    "incomeUpTo5L": 1000
+    "incomeUpTo5L": 1000,
+    "incomeThreshold": 500000
+  },
+  "fee234I": {
+    "default": 5000,
+    "incomeUpTo5L": 1000,
+    "incomeThreshold": 500000
   },
   "itrEligibility": {
     "simpleFormIncomeCap": 5000000,
@@ -229,8 +250,24 @@
       "maxVehicles44AE": 10,
       "deemedProfit44AD": 0.08,
       "deemedProfit44ADDigital": 0.06,
-      "deemedProfit44ADA": 0.5
+      "deemedProfit44ADA": 0.5,
+      "deemedProfit44AEHeavyPerTonPerMonth": 1000,
+      "deemedProfit44AEOtherPerVehiclePerMonth": 7500,
+      "cashShareLimit": 0.05,
+      "heavyVehicleAboveGrossWeightTons": 12
     }
+  },
+  "houseProperty": {
+    "standardDeductionPct": 0.3,
+    "maxSelfOccupied": 2,
+    "selfOccupiedInterestCapOlder": 30000,
+    "preConstructionInstallments": 5
+  },
+  "lossCarryForward": {
+    "housePropertyYears": 8,
+    "businessYears": 8,
+    "speculativeYears": 4,
+    "capitalYears": 8
   },
   "tdsCorrectionWindow": {
     "description": "Deductor correction statements: 6 years from the end of the FY in which the statement was due (proviso to s.200(3), Finance (No.2) Act 2024), cut to 2 years from 1 April 2026 under s.397(3)(f) of the Income-tax Act 2025"

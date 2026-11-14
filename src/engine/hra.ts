@@ -120,7 +120,7 @@ export function computeHra(
   const annualRent = periods.reduce((s, p) => s + p.rentPaid, 0);
   if (annualRent > hra.warnings.landlordPanRentPerYear) {
     warnings.push(
-      `annual rent ${annualRent} exceeds Rs ${hra.warnings.landlordPanRentPerYear} -- landlord PAN required on Form 12BB (Rule 26C)`,
+      `annual rent ${annualRent} exceeds Rs ${hra.warnings.landlordPanRentPerYear} -- landlord PAN required on ${pack.statute.forms.claimDeclaration}`,
     );
   }
 
@@ -240,7 +240,7 @@ export function compute80GG(
     limbs,
     warnings,
     notes: [
-      "80GG requires: old regime, no HRA received at any time in the year, Form 10BA filed (acknowledgement number goes in Schedule 80GG)",
+      `80GG requires: old regime, no HRA received at any time in the year, ${pack.statute.forms.rentDeclaration80GG} filed (acknowledgement number goes in Schedule 80GG)`,
       "ATI = total income before 80GG, excluding LTCG, 111A STCG, and other Chapter VI-A deductions",
       `cap limb = Rs ${cfg.capPerMonth.toLocaleString("en-IN")}/month x ${months} month(s), subject to Rs ${cfg.capPerYear.toLocaleString("en-IN")}/year`,
       "No self-owned residential house at the work location (or any house claimed as self-occupied elsewhere) may be held by the taxpayer, spouse, or minor child.",

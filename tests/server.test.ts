@@ -2,8 +2,7 @@ import { createCipheriv, pbkdf2Sync, randomBytes } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
 import { describe, expect, it } from "vitest";
 import { createServer } from "../src/server.js";
 
@@ -20,14 +19,17 @@ async function connectedClient() {
 }
 
 describe("itr-agent server", () => {
-  it("lists all twelve tools", async () => {
+  it("lists all sixteen tools", async () => {
     const client = await connectedClient();
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual([
       "compare_regimes",
+      "compute_house_property",
       "compute_hra",
       "compute_interest_234",
+      "compute_loss_setoff",
+      "compute_presumptive_income",
       "compute_tax",
       "filing_checklist",
       "list_deductions",
@@ -37,6 +39,7 @@ describe("itr-agent server", () => {
       "recommend_itr_form",
       "reconcile_documents",
       "schedule_advance_tax",
+      "tax_summary",
     ]);
     for (const tool of tools) {
       expect(tool.annotations?.readOnlyHint).toBe(true);
@@ -853,5 +856,331 @@ describe("inputs that used to need the model's own judgement or arithmetic", () 
       arguments: { periods: [period] },
     });
     expect(neither.isError).toBeTruthy();
+  });
+});
+
+describe("engine-backed tools: house property, presumptive, losses, what I owe, status", () => {
+  it("compute_tax works the house-property head out per regime from `houses`", async () => {
+    const client = await connectedClient();
+    const house = { use: "selfOccupied", interestPayable: 300000 };
+    const old = await client.callTool({
+      name: "compute_tax",
+      arguments: { regime: "old", salaryIncome: 1500000, houses: [house] },
+    });
+    expect(old.isError).toBeFalsy();
+    const o = old.structuredContent as {
+      totalTax: number;
+      housePropertyLossSetOff: number;
+      houseProperty: { totals: { interestAllowed: number } };
+    };
+    // Old regime: interest capped at 2,00,000 (s.24(b)) and set off in full
+    // (s.71(3A)). 15,00,000 - 50,000 - 2,00,000 = 12,50,000: 12,500 + 1,00,000
+    // + 30% of 2,50,000 = 1,87,500, cess 7,500, total 1,95,000.
+    expect(o.houseProperty.totals.interestAllowed).toBe(200000);
+    expect(o.housePropertyLossSetOff).toBe(200000);
+    expect(o.totalTax).toBe(195000);
+
+    const fresh = await client.callTool({
+      name: "compute_tax",
+      arguments: { regime: "new", salaryIncome: 1500000, houses: [house] },
+    });
+    // New regime: self-occupied interest is nil (s.115BAC(2)(i)), so the tax
+    // is the plain 15L salary figure: 93,750 + 3,750 cess = 97,500.
+    expect((fresh.structuredContent as { totalTax: number }).totalTax).toBe(
+      97500,
+    );
+
+    const both = await client.callTool({
+      name: "compute_tax",
+      arguments: {
+        regime: "old",
+        salaryIncome: 1500000,
+        houses: [house],
+        housePropertyLoss: 100000,
+        housePropertyType: "letOut",
+      },
+    });
+    expect(both.isError).toBe(true);
+  });
+
+  it("compare_regimes returns the breakeven and each regime's house figures", async () => {
+    const client = await connectedClient();
+    const result = await client.callTool({
+      name: "compare_regimes",
+      arguments: {
+        salaryIncome: 1500000,
+        houses: [{ use: "selfOccupied", interestPayable: 300000 }],
+      },
+    });
+    expect(result.isError).toBeFalsy();
+    const sc = result.structuredContent as {
+      breakeven: {
+        newRegimeTax: number;
+        breakEvenDeductions: number | null;
+        additionalDeductionsNeeded: number | null;
+      };
+      houseProperty: {
+        new: { totals: { interestAllowed: number } };
+        old: { totals: { interestAllowed: number } };
+      };
+    };
+    expect(sc.houseProperty.new.totals.interestAllowed).toBe(0);
+    expect(sc.houseProperty.old.totals.interestAllowed).toBe(200000);
+    expect(sc.breakeven.newRegimeTax).toBe(97500);
+    expect(sc.breakeven.breakEvenDeductions).not.toBeNull();
+    expect(sc.breakeven.additionalDeductionsNeeded).toBeGreaterThan(0);
+  });
+
+  it("compute_house_property and compute_presumptive_income round trip", async () => {
+    const client = await connectedClient();
+    const hp = await client.callTool({
+      name: "compute_house_property",
+      arguments: {
+        regime: "old",
+        houses: [
+          {
+            use: "letOut",
+            grossAnnualValue: 240000,
+            municipalTaxesPaid: 20000,
+            interestPayable: 250000,
+          },
+        ],
+      },
+    });
+    expect(hp.isError).toBeFalsy();
+    // 2,40,000 - 20,000 = 2,20,000; less 30% (66,000) and 2,50,000 interest
+    // = -96,000 (s.24(a), s.24(b); no cap on a let-out house).
+    expect(
+      (hp.structuredContent as { totals: { income: number } }).totals.income,
+    ).toBe(-96000);
+
+    const presumptive = {
+      scheme: "44ADA",
+      grossReceipts: 4000000,
+      cashReceiptsWithin5Pct: true,
+    };
+    const pr = await client.callTool({
+      name: "compute_presumptive_income",
+      arguments: presumptive,
+    });
+    expect(pr.isError).toBeFalsy();
+    expect(
+      (pr.structuredContent as { incomeToReport: number }).incomeToReport,
+    ).toBe(2000000);
+
+    const tax = await client.callTool({
+      name: "compute_tax",
+      arguments: { regime: "new", presumptiveBusiness: presumptive },
+    });
+    // 50% of 40,00,000 = 20,00,000 at slab rates: 2,00,000 + 4% cess.
+    expect((tax.structuredContent as { totalTax: number }).totalTax).toBe(
+      208000,
+    );
+
+    const missing = await client.callTool({
+      name: "compute_presumptive_income",
+      arguments: { scheme: "44ADA", grossReceipts: 4000000 },
+    });
+    expect(missing.isError).toBe(true);
+  });
+
+  it("compute_loss_setoff applies the issue #4 ledger", async () => {
+    const client = await connectedClient();
+    const result = await client.callTool({
+      name: "compute_loss_setoff",
+      arguments: {
+        regime: "new",
+        filedByDueDate: true,
+        salaryIncome: 1200000,
+        capitalGains: { stcg111A: 80000, longTermLoss: 15000 },
+        broughtForward: [
+          { kind: "shortTermCapital", originFy: "2023-24", amount: 150000 },
+        ],
+      },
+    });
+    expect(result.isError).toBeFalsy();
+    const sc = result.structuredContent as {
+      forComputeTax: { stcg111A: number };
+      carryForward: { kind: string; amount: number }[];
+    };
+    // s.74: the brought-forward 1,50,000 STCL absorbs all 80,000 of 111A
+    // gains; 70,000 of it and the new 15,000 LTCL are carried forward.
+    expect(sc.forComputeTax.stcg111A).toBe(0);
+    const carried = Object.fromEntries(
+      sc.carryForward.map((c) => [c.kind, c.amount]),
+    );
+    expect(carried).toMatchObject({
+      shortTermCapital: 70000,
+      longTermCapital: 15000,
+    });
+  });
+
+  it("tax_summary reads the TDS credit from the 26AS file and counts the interest", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "itr-summary-"));
+    try {
+      const f26 = join(dir, "26as.txt");
+      const lines = (ay: string) =>
+        [
+          `Assessment Year : ${ay}`,
+          "Permanent Account Number (PAN) of the Assessee: ABCDE1234F",
+          "PART I - Details of Tax Deducted at Source",
+          "1^ABCD12345E^ACME LTD^",
+          "^^^192^31-Mar-2026^F^15-Apr-2026^^1500000.00^50000.00^50000.00^",
+        ].join("\n");
+      await writeFile(f26, lines("2026-27"));
+      const client = await connectedClient();
+      const args = {
+        regime: "new",
+        salaryIncome: 1500000,
+        form26asPath: f26,
+        form: "ITR-1",
+        filingDate: "2026-07-15",
+      };
+      const result = await client.callTool({
+        name: "tax_summary",
+        arguments: args,
+      });
+      expect(result.isError).toBeFalsy();
+      const sc = result.structuredContent as {
+        totalTax: number;
+        tdsCredit: number;
+        fee234F: number;
+        interestTotal: number;
+        s234A: { interest: number };
+        net: number;
+        dueDate: string;
+        form26as: { creditableTdsDeposited: number };
+      };
+      expect(sc.dueDate).toBe("2026-07-31");
+      expect(sc.totalTax).toBe(97500);
+      expect(sc.tdsCredit).toBe(50000);
+      expect(sc.form26as.creditableTdsDeposited).toBe(50000);
+      // Filed on time: no 234A, no 234F; 234B and 234C run on the 47,500 left.
+      expect(sc.s234A.interest).toBe(0);
+      expect(sc.fee234F).toBe(0);
+      expect(sc.interestTotal).toBeGreaterThan(0);
+      expect(sc.net).toBe(
+        Math.round((97500 + sc.interestTotal - 50000) / 10) * 10,
+      );
+
+      await writeFile(f26, lines("2025-26"));
+      const wrongYear = await client.callTool({
+        name: "tax_summary",
+        arguments: args,
+      });
+      expect(wrongYear.isError).toBe(true);
+
+      const noCredit = await client.callTool({
+        name: "tax_summary",
+        arguments: { regime: "new", salaryIncome: 1500000, form: "ITR-1" },
+      });
+      expect(noCredit.isError).toBe(true);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("list_tax_years reports the filing status for a date and each year's statute", async () => {
+    const client = await connectedClient();
+    const result = await client.callTool({
+      name: "list_tax_years",
+      arguments: { asOf: "2026-11-14" },
+    });
+    expect(result.isError).toBeFalsy();
+    const sc = result.structuredContent as {
+      supported: string[];
+      asOf: string;
+      status: {
+        groups: { phase: string }[];
+        advanceTax: { covered: boolean; next: { dueDate: string } | null };
+      };
+      statutes: Record<string, { act: string }>;
+    };
+    expect(sc.supported).toEqual(["2025-26", "2026-27"]);
+    expect(sc.asOf).toBe("2026-11-14");
+    expect(sc.status.groups.every((g) => g.phase === "belatedWindow")).toBe(
+      true,
+    );
+    expect(sc.status.advanceTax.covered).toBe(true);
+    expect(sc.status.advanceTax.next?.dueDate).toBe("2026-12-15");
+    expect(sc.statutes["2026-27"]?.act).toBe("Income-tax Act, 2025");
+
+    const today = await client.callTool({
+      name: "list_tax_years",
+      arguments: {},
+    });
+    expect((today.structuredContent as { asOf: string }).asOf).toMatch(
+      /^\d{4}-\d{2}-\d{2}$/,
+    );
+  });
+
+  it("a tax year 2026-27 result says which Act it follows", async () => {
+    const client = await connectedClient();
+    const result = await client.callTool({
+      name: "compute_tax",
+      arguments: { regime: "new", salaryIncome: 1300000, fy: "2026-27" },
+    });
+    expect(result.isError).toBeFalsy();
+    const sc = result.structuredContent as {
+      totalTax: number;
+      disclaimers: string[];
+    };
+    expect(sc.totalTax).toBe(26000);
+    expect(sc.disclaimers.some((d) => d.includes("Income-tax Act, 2025"))).toBe(
+      true,
+    );
+    const current = await client.callTool({
+      name: "compute_tax",
+      arguments: { regime: "new", salaryIncome: 1300000 },
+    });
+    expect(
+      (current.structuredContent as { disclaimers: string[] }).disclaimers.some(
+        (d) => d.includes("Income-tax Act, 2025"),
+      ),
+    ).toBe(false);
+  });
+
+  it("refuses a presumptive scheme the business is not eligible for", async () => {
+    // 3 crore of non-digital turnover is over every s.44AD ceiling; computing
+    // tax on nil business income instead would look like an answer.
+    const client = await connectedClient();
+    const result = await client.callTool({
+      name: "compute_tax",
+      arguments: {
+        regime: "new",
+        presumptiveBusiness: { scheme: "44AD", otherTurnover: 30000000 },
+      },
+    });
+    expect(result.isError).toBe(true);
+    const text = (result.content as { text: string }[])[0]?.text ?? "";
+    expect(text).toContain("otherIncome");
+  });
+
+  it("tax_summary asks a senior about business income, then applies s.207(2)", async () => {
+    const client = await connectedClient();
+    const args = {
+      regime: "new",
+      salaryIncome: 1500000,
+      ageBand: "senior",
+      tdsCredit: 47500,
+      form: "ITR-1",
+      filingDate: "2026-07-20",
+    };
+    const unasked = await client.callTool({
+      name: "tax_summary",
+      arguments: args,
+    });
+    expect(unasked.isError).toBe(true);
+    const pension = await client.callTool({
+      name: "tax_summary",
+      arguments: { ...args, businessIncome: false },
+    });
+    expect(pension.isError).toBeFalsy();
+    const sc = pension.structuredContent as {
+      s234B: { interest: number };
+      s234C: { totalInterest: number };
+    };
+    expect(sc.s234B.interest).toBe(0);
+    expect(sc.s234C.totalInterest).toBe(0);
   });
 });

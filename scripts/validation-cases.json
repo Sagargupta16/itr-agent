@@ -6,7 +6,7 @@
       "note": "The Finance Minister's own table of new-regime tax at sample incomes. 'Income' in that table is total income, so the cases pass it as otherIncome (no standard deduction). Its 'Proposed' column is slab tax, 'Rebate benefit' is the s.87A rebate, and 'Tax after rebate' is tax before surcharge and cess."
     },
     "statute": {
-      "title": "Hand computation from the Finance Act 2025 First Schedule, s.87A, s.111A, s.112A, s.288A and s.288B",
+      "title": "Hand computation from the Finance Act 2025 First Schedule, s.87A, s.111A, s.112A, s.24, s.44AD/44ADA/44AE, s.288A and s.288B, and for tax year 2026-27 the Income-tax Act 2025 s.19, s.156 and s.202",
       "url": "https://www.indiabudget.gov.in/budget2025-26/doc/memo.pdf",
       "note": "Worked by hand from the rates and provisos, with the arithmetic in the Working column. These are not independent of the author the way the Budget Speech rows are: they check that the engine does what the statute says, not that a second party agrees."
     }
@@ -231,6 +231,60 @@
       "args": { "regime": "new", "otherIncome": 5100000 },
       "working": "Slab tax 11,10,000; 10% surcharge would be 1,11,000. Relief caps tax + surcharge at the tax on 50,00,000 (10,80,000) plus the 1,00,000 excess = 11,80,000, so surcharge is 70,000. Cess 4% of 11,80,000 = 47,200. Total 12,27,200.",
       "expect": { "slabTax": 1110000, "surcharge": 70000, "totalTax": 1227200 }
+    },
+    {
+      "id": "st-hp-self-occupied-old",
+      "source": "statute",
+      "label": "15 lakh salary, one self-occupied house with 3 lakh interest, old regime",
+      "tool": "compute_tax",
+      "args": {
+        "regime": "old",
+        "salaryIncome": 1500000,
+        "houses": [{ "use": "selfOccupied", "interestPayable": 300000 }]
+      },
+      "working": "s.24(b) second proviso caps self-occupied interest at 2,00,000, and s.71(3A) sets all of it off. 15,00,000 - 50,000 - 2,00,000 = 12,50,000: 12,500 + 1,00,000 + 30% of 2,50,000 = 1,87,500. Cess 7,500. Total 1,95,000.",
+      "expect": { "housePropertyLossSetOff": 200000, "totalTax": 195000 }
+    },
+    {
+      "id": "st-44ada-40l",
+      "source": "statute",
+      "label": "44ADA professional receipts of 40 lakh",
+      "tool": "compute_presumptive_income",
+      "args": {
+        "scheme": "44ADA",
+        "grossReceipts": 4000000,
+        "cashReceiptsWithin5Pct": true
+      },
+      "working": "s.44ADA(1): 50% of 40,00,000 = 20,00,000, inside the 75,00,000 ceiling for cash receipts within 5%.",
+      "expect": {
+        "eligible": true,
+        "deemedIncome": 2000000,
+        "incomeToReport": 2000000
+      }
+    },
+    {
+      "id": "st-44ae-two-carriages",
+      "source": "statute",
+      "label": "44AE: a 16-ton truck for 12 months and a light carriage for 7",
+      "tool": "compute_presumptive_income",
+      "args": {
+        "scheme": "44AE",
+        "carriages": [
+          { "type": "heavy", "grossWeightTons": 16, "monthsOwned": 12 },
+          { "type": "other", "monthsOwned": 7 }
+        ]
+      },
+      "working": "s.44AE(2): 16 x 1,000 x 12 = 1,92,000 for the heavy goods vehicle; 7,500 x 7 = 52,500 for the other. Total 2,44,500.",
+      "expect": { "deemedIncome": 244500 }
+    },
+    {
+      "id": "st-ty2627-13l",
+      "source": "statute",
+      "label": "Tax year 2026-27: 13 lakh salary, new regime (s.156(2)(b) marginal relief)",
+      "tool": "compute_tax",
+      "args": { "regime": "new", "salaryIncome": 1300000, "fy": "2026-27" },
+      "working": "Income-tax Act 2025 s.19: 13,00,000 - 75,000 = 12,25,000. s.202(1) slab tax 60,000 + 15% of 25,000 = 63,750. s.156(2)(b) relief limits it to the 25,000 above 12,00,000. Cess 1,000. Total 26,000.",
+      "expect": { "taxableNormalIncome": 1225000, "totalTax": 26000 }
     }
   ]
 }

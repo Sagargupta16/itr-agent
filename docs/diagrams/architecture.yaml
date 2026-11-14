@@ -21,13 +21,13 @@ nodes:
   client: { icon: logos:claude-icon, label: MCP client, note: Claude Desktop or Claude Code, in: machine, align: you }
   portal: { icon: tabler:building-bank, label: incometax.gov.in, note: "outside this tool; no filing API exists", rank: first }
   stdio: { icon: logos:nodejs-icon, label: stdio transport, note: src/index.ts, in: proc }
-  server: { icon: logos:model-context-protocol-icon, label: MCP tool surface, note: "12 tools + 1 prompt, zod inputs", in: proc }
-  compute: { icon: tabler:calculator, label: Tax engine, note: "slabs, 87A, surcharge, cess", in: engine }
+  server: { icon: logos:model-context-protocol-icon, label: MCP tool surface, note: "16 tools + 1 prompt, zod inputs", in: proc }
+  compute: { icon: tabler:calculator, label: Tax engine, note: "slabs, 87A, surcharge, cess, loss set-off", in: engine }
   form: { icon: tabler:receipt-tax, label: Form picker, note: ITR-1/2/3/4 + checklist, in: engine }
-  other: { icon: tabler:percentage, label: Interest + HRA, note: "234A/B/C, advance tax, reconcile", in: engine }
+  other: { icon: tabler:percentage, label: Interest + HRA, note: "234A/B/C, tax summary, reconcile", in: engine }
   p26: { icon: tabler:file-text, label: Form 26AS, note: TRACES text export, in: parsers }
   pais: { icon: tabler:file-lock, label: AIS, note: on-device AES decrypt, in: parsers }
-  pack: { icon: tabler:json, label: Rule pack, note: "data/fy2025-26.json, validated at load", in: proc }
+  pack: { icon: tabler:json, label: Rule packs, note: "fy2025-26.json, fy2026-27.json, validated at load", in: proc }
   docs: { shape: document, label: Your 26AS / AIS exports, note: files on your disk, in: machine }
 
 edges:
