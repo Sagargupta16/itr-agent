@@ -3,6 +3,42 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.7.0] - 2026-11-14
+
+The six enhancements from the 2026-11-13 plan: four new tools (house property, presumptive income, loss set-off, a one-call "what do I owe"), a filing-status read from today's date, a tax year 2026-27 rule pack, and the move to the 2.x MCP SDK. Computed tax for every input that was valid before is unchanged: all 58 earlier validation figures still match, and `pnpm validate` now checks 24 cases and 66 figures. One reported figure changes: `compute_tax`'s house-property carry-forward when the loss is larger than the income it can be set off against (see Fixed).
+
+Minor, not patch: four tools and a second rule pack are new, `compute_tax`, `compare_regimes` and `tax_summary` take new inputs and return new fields, `list_tax_years` returns `status` and `statutes`, the SDK package changed, and rule pack 1.6.0 requires keys that earlier packs lack (a pre-1.6.0 pack no longer loads).
+
+### Added
+
+- **`compute_house_property`**: income from house property per house from rent, municipal tax and home-loan interest. Annual value, the 30% standard deduction (s.24(a)), interest with the Rs 2 lakh self-occupied cap shared across self-occupied houses (Rs 30,000 for an older loan; nil under the new regime), pre-construction interest in five instalments, and houses past the two-house self-occupied limit treated as let out. Source: s.23(2), s.24(a), s.24(b) and its second proviso
+- **`compute_presumptive_income`**: deemed profit under s.44AD (8%, 6% of digital receipts, up to Rs 2 crore, or Rs 3 crore where cash receipts are at most 5%), s.44ADA (50%, up to Rs 50 lakh, or Rs 75 lakh at the 5% cash limit) and s.44AE (Rs 1,000 per ton per month for a heavy goods vehicle, Rs 7,500 per month for any other, up to 10 vehicles). Reports eligibility, the working, and the income to report (the higher of deemed and declared). Source: s.44AD(1), s.44ADA(1), s.44AE(2) and its Explanation
+- **`compute_loss_setoff`** ([#4](https://github.com/Sagargupta16/itr-agent/issues/4)): current-year and brought-forward losses applied in statutory order (s.70 within a head, s.71 across heads with the Rs 2 lakh house-property cap and no business loss against salary, then s.71B, s.72, s.73 and s.74 oldest first), each step with its section; income by head after set-off; what is carried forward and the last year it can be used (8 years for house property, business and capital losses, 4 for speculation); what expired; what s.80 forfeits on a late return; and Schedule CYLA, BFLA and CFL rows. `forComputeTax` goes into `compute_tax` or `tax_summary` field for field
+- **`tax_summary`**: what is payable or refundable in one call. Tax from `compute_tax`, less TDS and TCS read from the Form 26AS file itself (creditable rows only), advance tax and self-assessment tax by date, s.234A, s.234B and s.234C interest with every month count taken from the dates, the s.234F fee when filed after the due date, and a net rounded under s.288B. It refuses a 26AS for a different assessment year than the `fy` asked for. A resident senior with no business or professional income is charged no s.234B or s.234C (s.207(2): no advance tax liability); for a senior without `presumptiveBusiness` the tool asks `businessIncome` rather than guess. The net rounds the magnitude, so a refund of 15 is 20 like a payable. This also closes the date-driven payment arrays that `docs/v0.2-spec.md` listed as not shipped
+- `compute_tax`, `compare_regimes` and `tax_summary` take `houses` and `presumptiveBusiness` and fold the house-property head and the presumptive income into each regime in code.
+- `compare_regimes` returns `breakeven`: the smallest old-regime deductions at which the old regime costs no more than the new one, and how many more than the ones passed (null when no amount gets there)
+- `list_tax_years` takes an optional `asOf` and returns `status`, worked out from today's date in India: the phase for each ITR form group (on time, belated with the s.234F fee, or updated return only), days left, the belated window, the revised window with the s.234-I fee, and the next advance tax instalment of the current financial year. It also returns `statutes`: each year's Act, and for tax year 2026-27 the map from the 1961 section numbers the notes cite to the Income-tax Act 2025
+- **Tax year 2026-27 rule pack** (`data/fy2026-27.json`, pack 1.6.0), under the Income-tax Act 2025 as amended by the Finance Act 2026 and the Income-tax Rules 2026. Figures are unchanged from FY 2025-26 except: eight HRA metros under Rule 279(1)(c) Table (Mumbai, Kolkata, Delhi, Chennai, Hyderabad, Pune, Ahmedabad, Bengaluru at 50%, any other place 40%), due dates in 2027 (31 July, 31 August for non-audit business, 31 October for audit, belated 2027-12-31, revised 2028-03-31), and the new form names (Form No. 130, Form No. 124, Form No. 31). Results for this year carry a disclaimer that the notes cite 1961 Act section numbers, with the map in `list_tax_years`. The default year stays 2025-26. Items carried over from 2025-26 until the tax year 2026-27 return forms are notified are listed in the pack's last `sources` entry: the ITR-1/ITR-4 income cap, the Schedule AL threshold, the agricultural income cap, the Rs 3,000 HRA rent-receipt waiver, the reconcile tolerances, and the 26AS section map (no 26AS successor layout was found). Source: the pack's `sources` list, which cites Income-tax Act 2025 ss.19, 21, 22, 58, 121, 123, 124, 126, 134, 153, 156, 196 to 198, 202, 263 and 428, the Finance Act 2026, and Income-tax Rules 2026 Rules 65, 205, 215, 269 and 279
+- Rule pack 1.6.0 keys: `houseProperty`, `lossCarryForward`, the 44AE rates, `cashShareLimit` and `heavyVehicleAboveGrossWeightTons` under `itrEligibility.presumptive`, `lateFee234F.incomeThreshold`, `fee234I` and `statute`. Source for each is in the pack's `sources`: s.23(2), s.24(a), s.24(b), s.44AE(2), ss.70 to 74 and s.80, s.234F, and s.234-I as inserted by Finance Act 2026 s.16 with effect from 1 March 2026 (revised return beyond nine months: Rs 1,000 where total income does not exceed Rs 5 lakh, Rs 5,000 otherwise)
+- Tests: 280 (was 173), including golden cases for each new tool and the tax year 2026-27 pack
+
+### Changed
+
+- **MCP SDK 2.x.** `@modelcontextprotocol/sdk` 1.32 is replaced by `@modelcontextprotocol/server` 2.4.0 (`pnpm list --prod` shows 5 packages: the server, its core package and zod), with `@modelcontextprotocol/client` 2.4.0 as a dev dependency for the tests and scripts. Tool `inputSchema` values are `z.object()`. `pnpm audit` is clean
+- `file_my_itr` reads `list_tax_years` `status` first, asks per house for `houses`, passes `presumptiveBusiness`, runs `compute_loss_setoff` for step 5, quotes `breakeven` in step 7 and ends the money steps with `tax_summary`
+- The s.234-I fee tiers are now in the pack (`fee234I`) and returned with `status`; before this the README said no primary source had been found
+- `docs/v0.2-spec.md` status markers brought up to date: M2 and the 234A date input are marked shipped, HRA takes a city, and the date-driven payment arrays are marked shipped through `tax_summary`
+
+### Fixed
+
+- `compute_tax` set a house-property loss off up to the Rs 2 lakh cap whether or not there was that much income to absorb it, so a let-out loss of 3,30,000 with no other income reported 2,00,000 set off and only 1,30,000 carried forward. The set-off is now limited to the normal income there is (salary after the standard deduction plus other income) and the rest is carried forward under s.71B: 3,30,000 in that case. Tax was already right (income floors at nil); only the carry-forward figure changes. When gains could absorb the rest, the result points to `compute_loss_setoff`
+
+### Removed
+
+- The five runtime pnpm overrides (`hono`, `@hono/node-server`, `fast-uri`, `ip-address`, `qs`): those packages left the dependency tree with the old SDK
+- The `createRequire` banner in the `.mcpb` build: it is no longer needed with the 2.x server
+- Support for rule packs before 1.6.0: `validatePack()` rejects them, naming the missing keys
+
 ## [0.6.1] - 2026-11-13
 
 Release workflow only. The npm package's code and rule pack are the same as 0.6.0; this version reaches npm with the next release.

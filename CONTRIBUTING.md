@@ -27,6 +27,8 @@ pnpm test
 
 New FY = new `data/fyYYYY-YY.json` pack + `availableYears()` update + golden tests for the changed rules. Engine code changes should be rare -- if a rule change needs code, consider whether the rule pack schema should grow instead.
 
+`data/fy2026-27.json` is the model for a year under a different Act: its `statute` block (`act`, `sectionMap`, `note`, `forms`) tells `list_tax_years` and the result disclaimers which section numbers the notes cite. `validatePack()` refuses a pack that lacks the pack 1.6.0 keys (`houseProperty`, `lossCarryForward`, `fee234I`, `statute` and the 44AE fields), so copy the newest pack and change figures, citing each one in `sources`.
+
 ## Diagrams
 
 The README's architecture and filing-flow diagrams are rendered from the YAML specs in `docs/diagrams/` with [orrery](https://github.com/Sagargupta16/orrery). Edit the spec, not the SVG, then re-render both themes and commit the SVGs with it:

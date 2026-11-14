@@ -537,3 +537,38 @@ describe("scheduleAdvanceTax", () => {
     expect(plan.installments[1]?.shortfall).toBe(20000);
   });
 });
+
+describe("house-property set-off is limited to the income there is", () => {
+  it("a let-out loss with no other income is carried forward whole (s.71B)", () => {
+    // Old regime, 3,30,000 let-out loss, no salary or other income: nothing
+    // exists to set it off against under s.71, so all of it is carried.
+    const r = computeTax(
+      {
+        ...base,
+        regime: "old",
+        housePropertyLoss: 330000,
+        housePropertyType: "letOut",
+      },
+      pack,
+    );
+    expect(r.housePropertyLossSetOff).toBe(0);
+    expect(r.housePropertyLossCarriedForward).toBe(330000);
+  });
+
+  it("only the part normal income can absorb is set off", () => {
+    // 1,50,000 salary - 50,000 standard deduction = 1,00,000 of normal
+    // income: 1,00,000 of a 3,30,000 loss is set off, 2,30,000 carried.
+    const r = computeTax(
+      {
+        ...base,
+        regime: "old",
+        salaryIncome: 150000,
+        housePropertyLoss: 330000,
+        housePropertyType: "letOut",
+      },
+      pack,
+    );
+    expect(r.housePropertyLossSetOff).toBe(100000);
+    expect(r.housePropertyLossCarriedForward).toBe(230000);
+  });
+});

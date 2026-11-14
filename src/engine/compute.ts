@@ -459,8 +459,22 @@ export function computeTax(input: TaxInput, pack: RulePack): TaxBreakdown {
     input.regime === "old"
       ? (pack.oldRegime.deductionCaps.housePropertyLossSetOff ?? 0)
       : 0;
-  const housePropertyLossSetOff = Math.min(hpLoss, hpCap);
+  // Only income that exists can absorb it: with less normal income than the
+  // cap, the rest is carried forward too, not lost.
+  const normalAvailable = Math.max(
+    0,
+    input.salaryIncome - standardDeduction + input.otherIncome,
+  );
+  const housePropertyLossSetOff = Math.min(hpLoss, hpCap, normalAvailable);
   const housePropertyLossCarriedForward = hpLoss - housePropertyLossSetOff;
+  if (
+    housePropertyLossSetOff < Math.min(hpLoss, hpCap) &&
+    input.stcg111A + input.ltcg112A > 0
+  ) {
+    notes.push(
+      "s.71 also lets a house-property loss reduce capital gains; this computation sets it off against normal income only, so use compute_loss_setoff when the gains could absorb the rest of it.",
+    );
+  }
 
   const normalBeforeRounding = Math.max(
     0,

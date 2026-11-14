@@ -30,3 +30,4 @@ fixtures/*
 !fixtures/README.md
 *.26AS.txt
 *AIS*.json
+.scratch/

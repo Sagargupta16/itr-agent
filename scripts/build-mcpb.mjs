@@ -1,6 +1,6 @@
 // Builds the one-click Claude Desktop bundle: build/itr-agent-<version>.mcpb.
 //
-// The npm build keeps @modelcontextprotocol/sdk and zod external because npm
+// The npm build keeps @modelcontextprotocol/server and zod external because npm
 // installs them. A .mcpb has no install step, so this build inlines every
 // dependency into one file, stages it next to data/ and a minimal
 // package.json (rulepack.ts resolves both relative to the entry), generates
@@ -25,8 +25,8 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { Client } from "@modelcontextprotocol/client";
+import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import { build } from "tsup";
 
 // Pinned: the CLI is fetched on demand rather than added as a devDependency,
@@ -50,11 +50,6 @@ await build({
   target: "node22",
   platform: "node",
   noExternal: [/.*/],
-  // CommonJS dependencies (ajv, via the SDK) call require() on Node builtins;
-  // an ESM bundle has no require unless one is created.
-  banner: {
-    js: 'import { createRequire } from "node:module"; const require = createRequire(import.meta.url);',
-  },
   clean: true,
   dts: false,
   silent: true,

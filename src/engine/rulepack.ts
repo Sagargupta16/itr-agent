@@ -68,8 +68,38 @@ export interface Deduction80GGConfig {
   regimes: string[];
 }
 
+/** A fee with a lower figure for small incomes (s.234F, s.234-I). */
+export interface LowIncomeFee {
+  default: number;
+  incomeUpTo5L: number;
+  /** Total income at or below this pays `incomeUpTo5L`. */
+  incomeThreshold: number;
+}
+
 export interface ReconcileConfig {
   toleranceRupees: { pass: number; warn: number; high: number };
+}
+
+/** The statute a pack encodes. The engine's notes cite Income-tax Act 1961
+ * section numbers; a pack under the Income-tax Act 2025 (tax year 2026-27 on)
+ * maps those labels to its own, names the renumbered forms, and carries a note
+ * the server adds to every result computed with it. */
+export interface StatuteConfig {
+  act: string;
+  /** 1961 Act label -> this Act's label, for the sections the engine cites.
+   * Empty for a 1961 Act pack. */
+  sectionMap: Record<string, string>;
+  /** Added to the disclaimers of every result computed with this pack; null
+   * when the engine's citations already match the statute. */
+  note: string | null;
+  forms: {
+    /** TDS certificate for salary: Form 16, Form No. 130 under the 2025 Rules. */
+    salaryCertificate: string;
+    /** Employee's claim declaration (landlord PAN for HRA): Form 12BB. */
+    claimDeclaration: string;
+    /** The 80GG rent declaration: Form 10BA. */
+    rentDeclaration80GG: string;
+  };
 }
 
 export interface RulePack {
@@ -77,6 +107,7 @@ export interface RulePack {
   ay: string;
   rulePackVersion: string;
   sources: string[];
+  statute: StatuteConfig;
   newRegime: {
     slabs: Slab[];
     standardDeduction: number;
@@ -131,7 +162,12 @@ export interface RulePack {
   /** Statutory basis for each `deadlines` key, so tools can say WHY a date is
    * what it is instead of asserting an uncited calendar date. */
   deadlineCitations: Record<string, string>;
-  lateFee234F: { default: number; incomeUpTo5L: number };
+  /** s.234F late fee; the lower figure applies where total income does not
+   * exceed `incomeThreshold`. */
+  lateFee234F: LowIncomeFee;
+  /** s.234-I (Finance Act 2026): fee on a revised return filed after
+   * `deadlines.revisedWithoutFee234I`, banded like s.234F. */
+  fee234I: LowIncomeFee;
   /** ITR-1/ITR-4 eligibility ceilings (statutory, so they live here not in code). */
   itrEligibility: {
     simpleFormIncomeCap: number;
@@ -154,7 +190,43 @@ export interface RulePack {
       deemedProfit44ADDigital: number;
       /** s.44ADA(1): deemed profit as a share of gross receipts. */
       deemedProfit44ADA: number;
+      /** s.44AE(2)(a): rupees per ton of gross vehicle weight per month (or
+       * part) for a heavy goods vehicle. */
+      deemedProfit44AEHeavyPerTonPerMonth: number;
+      /** s.44AE(2)(b): rupees per month (or part) for any other goods carriage. */
+      deemedProfit44AEOtherPerVehiclePerMonth: number;
+      /** s.44AD(1) / s.44ADA(1) provisos: the higher ceilings apply where cash
+       * receipts are at most this share of the total. */
+      cashShareLimit: number;
+      /** s.44AE Explanation: a heavy goods vehicle is one whose gross vehicle
+       * weight EXCEEDS this many tons (12,000 kg). */
+      heavyVehicleAboveGrossWeightTons: number;
     };
+  };
+  /** Income from house property (1961 Act ss.23 and 24). The self-occupied
+   * interest cap itself is `oldRegime.deductionCaps.24b_selfOccupied`. */
+  houseProperty: {
+    /** s.24(a): standard deduction as a share of net annual value. */
+    standardDeductionPct: number;
+    /** s.23(2): how many houses may be self-occupied at nil annual value. */
+    maxSelfOccupied: number;
+    /** s.24(b) first proviso: the self-occupied cap where the loan predates
+     * 1-Apr-1999, was not for acquiring or building the house, or the house was
+     * not finished within five years (the second proviso raises it to
+     * `deductionCaps.24b_selfOccupied` otherwise). */
+    selfOccupiedInterestCapOlder: number;
+    /** Explanation to s.24(b): pre-construction interest is allowed in this
+     * many equal yearly instalments from the year of completion. */
+    preConstructionInstallments: number;
+  };
+  /** How many years after the year of loss each kind may be carried forward:
+   * s.71B (house property), s.72(3) (business), s.73(4) (speculative) and
+   * s.74(1) (capital). */
+  lossCarryForward: {
+    housePropertyYears: number;
+    businessYears: number;
+    speculativeYears: number;
+    capitalYears: number;
   };
   /** How long a deductor can still file a TDS correction statement. */
   tdsCorrectionWindow: { description: string };
@@ -307,10 +379,46 @@ function validatePack(fy: string, pack: RulePack): void {
       `rule pack fy${fy}.json predates pack 1.5.0: needs oldRegime.deductionCaps.{24b_selfOccupied, housePropertyLossSetOff}, interest.partMonthIsFullMonth and itrEligibility.presumptive.{deemedProfit44AD, deemedProfit44ADDigital, deemedProfit44ADA}.`,
     );
   }
+
+  // Pack 1.6.0: house-property, 44AE and loss carry-forward figures for the
+  // compute_house_property, compute_presumptive_income and compute_loss_setoff
+  // tools.
+  const hp = pack.houseProperty;
+  const cf = pack.lossCarryForward;
+  if (
+    !hp ||
+    !cf ||
+    typeof p.deemedProfit44AEHeavyPerTonPerMonth !== "number" ||
+    typeof p.deemedProfit44AEOtherPerVehiclePerMonth !== "number" ||
+    typeof p.cashShareLimit !== "number" ||
+    typeof p.heavyVehicleAboveGrossWeightTons !== "number" ||
+    typeof pack.lateFee234F.incomeThreshold !== "number" ||
+    !pack.fee234I ||
+    typeof pack.statute?.act !== "string" ||
+    !pack.statute.sectionMap ||
+    !pack.statute.forms ||
+    [
+      hp.standardDeductionPct,
+      hp.maxSelfOccupied,
+      hp.selfOccupiedInterestCapOlder,
+      hp.preConstructionInstallments,
+      cf.housePropertyYears,
+      cf.businessYears,
+      cf.speculativeYears,
+      cf.capitalYears,
+      pack.fee234I?.default,
+      pack.fee234I?.incomeUpTo5L,
+      pack.fee234I?.incomeThreshold,
+    ].some((v) => typeof v !== "number")
+  ) {
+    throw new Error(
+      `rule pack fy${fy}.json predates pack 1.6.0: needs houseProperty.{standardDeductionPct, maxSelfOccupied, selfOccupiedInterestCapOlder, preConstructionInstallments}, lossCarryForward.{housePropertyYears, businessYears, speculativeYears, capitalYears}, lateFee234F.incomeThreshold, fee234I.{default, incomeUpTo5L, incomeThreshold}, statute.{act, sectionMap, note, forms} and itrEligibility.presumptive.{deemedProfit44AEHeavyPerTonPerMonth, deemedProfit44AEOtherPerVehiclePerMonth, cashShareLimit, heavyVehicleAboveGrossWeightTons}.`,
+    );
+  }
 }
 
 export function availableYears(): string[] {
-  return ["2025-26"];
+  return ["2025-26", "2026-27"];
 }
 
 export const DEFAULT_FY = "2025-26";

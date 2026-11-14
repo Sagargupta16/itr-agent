@@ -1,0 +1,335 @@
+{
+	"fy": "2026-27",
+	"ay": "2027-28",
+	"rulePackVersion": "1.6.0",
+	"sources": [
+		"Income-tax Act, 2025 (30 of 2025) as amended by the Finance Act 2026, in force from 1 April 2026; tax year 2026-27 is the first tax year under it. Text read from incometaxindia.gov.in (income_tax_act_2025_as_amended_by_fa_act_2026-pdf) on 2026-11-13",
+		"Income-tax Rules, 2026 (G.S.R. 198(E), 20 March 2026), in force from 1 April 2026",
+		"Income-tax Act 2025 s.202(1) (new regime slabs: nil to Rs 4 lakh, then 5/10/15/20/25/30% at 8, 12, 16, 20 and 24 lakh) and s.19 (standard deduction Rs 75,000 under s.202, Rs 50,000 otherwise)",
+		"Finance Act 2026 First Schedule Part I-B Paragraph A (old regime slabs for tax year 2026-27, senior and super-senior basic exemption) and Paragraph F (surcharge 10/15/25/37%; the 25% and 37% bands exclude dividend and gains under ss.196 to 198; 15% cap on that income); Finance Act 2026 s.3(4)(b) and s.3(5) (s.202 surcharge capped at 25%, with marginal relief)",
+		"Income-tax Act 2025 s.156(1) (rebate up to Rs 12,500 where total income does not exceed Rs 5 lakh), s.156(2) (up to Rs 60,000 under s.202 where income does not exceed Rs 12 lakh, with marginal relief) and s.156(3) (the s.156(2) deduction cannot exceed tax at the s.202(1) rates); s.198(7) (no rebate against s.198 tax)",
+		"Income-tax Act 2025 s.196 (short-term gains on listed equity at 20%) and s.198 (long-term gains on listed equity at 12.5% above Rs 1,25,000), each with the set-off of unexhausted basic exemption",
+		"Income-tax Act 2025 s.123 (Rs 1,50,000), s.124 (employer NPS 14% under s.202 and for government employers, 10% otherwise; own NPS Rs 50,000 under s.124(3)), s.126 (health insurance Rs 25,000 / Rs 50,000 senior, preventive check-up Rs 5,000 within them), s.153 (interest Rs 10,000, or Rs 50,000 for a senior citizen) and s.134 (rent paid: Rs 5,000 a month, 25% of adjusted total income, rent less 10% of it)",
+		"Income-tax Act 2025 s.21(6), (7) (up to two self-occupied houses), s.22(1)(a) (30% standard deduction), s.22(1)(c) (pre-construction interest in five equal instalments), s.22(2) (self-occupied interest cap Rs 2 lakh, Rs 30,000 for an older or non-qualifying loan) and s.109(1)(b) (house-property loss set off against other heads up to Rs 2 lakh)",
+		"Income-tax Act 2025 ss.110 to 113 (carry forward: house property, capital and business losses 8 tax years, speculation loss 4) and s.121 (only a loss determined in a return filed under s.263(1) is carried forward; house property excepted)",
+		"Income-tax Act 2025 s.58(2) Table (presumptive: Sl. No. 1 business Rs 2 crore, Rs 3 crore where cash receipts do not exceed 5%, deemed profit 8% or 6% of digital receipts; Sl. No. 2 up to 10 goods carriages at Rs 1,000 per ton a month for a heavy goods vehicle, Rs 7,500 a month otherwise; Sl. No. 3 profession Rs 50 lakh, Rs 75 lakh where cash receipts do not exceed 5%, at 50%) and s.58 Explanation (a heavy goods vehicle exceeds 12,000 kg)",
+		"Income-tax Act 2025 s.263(1)(c) Table as substituted by the Finance Act 2026 (due dates in the financial year after the tax year: 31 July, 31 August for non-audit business or profession, 31 October for audit, 30 November where s.172 applies), s.263(4) (belated return to 31 December) and s.263(5) (revised return within twelve months from the end of the tax year)",
+		"Income-tax Act 2025 s.428(a) (late fee Rs 5,000, Rs 1,000 where total income does not exceed Rs 5 lakh) and s.428(b) (the same fee on a revised return furnished after nine months from the end of the tax year)",
+		"Income-tax Act 2025 s.403 and s.404 (advance tax where the liability is Rs 10,000 or more), s.408 (15/45/75/100% by 15 June, 15 September, 15 December and 15 March; presumptive business in one instalment by 15 March) and ss.423 to 425 (interest for late return, shortfall below 90% of assessed tax and deferment of instalments, 1% a month, with the 12% and 36% safe harbours)",
+		"Income-tax Rules 2026 Rule 269 (interest: part month counts as a full month, principal floored to Rs 100) and Income-tax Act 2025 s.516 (total income and tax payable rounded to the nearest Rs 10)",
+		"Income-tax Rules 2026 Rule 279(1)(c) Table (HRA exemption 50% of salary in Mumbai, Kolkata, Delhi, Chennai, Hyderabad, Pune, Ahmedabad and Bengaluru, 40% elsewhere), Rule 205 (Form No. 124, landlord PAN above Rs 1,00,000 of rent), Rule 215 (Form No. 130 salary certificate) and Rule 65 (Form No. 31 for the s.134 rent deduction)",
+		"Carried from tax year 2025-26 pending the tax year 2026-27 return forms, which are not yet notified: itrEligibility (simple-form income cap, Schedule AL threshold, agricultural income cap), the HRA rent-receipt waiver of Rs 3,000 a month, the reconcile tolerances and tdsSectionToHead (26AS section codes; the Income-tax Act 2025 moved salary TDS to s.392 and the rest to the s.393 tables, and no 26AS successor layout was found)"
+	],
+	"statute": {
+		"act": "Income-tax Act, 2025",
+		"sectionMap": {
+			"s.87A": "s.156",
+			"s.115BAC": "s.202",
+			"s.111A": "s.196",
+			"s.112": "s.197",
+			"s.112A": "s.198",
+			"s.16(ia)": "s.19",
+			"s.80C": "s.123",
+			"s.80CCD(1B)": "s.124(3)",
+			"s.80CCD(2)": "s.124(1), (2)",
+			"s.80D": "s.126",
+			"s.80TTA": "s.153",
+			"s.80TTB": "s.153",
+			"s.80GG": "s.134",
+			"s.23(2)": "s.21(6), (7)",
+			"s.24(a)": "s.22(1)(a)",
+			"s.24(b)": "s.22(1)(b), (c) and s.22(2)",
+			"s.70": "s.108",
+			"s.71": "s.109",
+			"s.71(3A)": "s.109(1)(b)",
+			"s.71B": "s.110",
+			"s.72": "s.112",
+			"s.73": "s.113",
+			"s.74": "s.111",
+			"s.80": "s.121",
+			"s.44AD": "s.58(2) Table Sl. No. 1",
+			"s.44AE": "s.58(2) Table Sl. No. 2",
+			"s.44ADA": "s.58(2) Table Sl. No. 3",
+			"s.44AA": "s.62",
+			"s.44AB": "s.63",
+			"s.139(1)": "s.263(1)",
+			"s.139(4)": "s.263(4)",
+			"s.139(5)": "s.263(5)",
+			"s.208": "s.404",
+			"s.211": "s.408",
+			"s.234A": "s.423",
+			"s.234B": "s.424",
+			"s.234C": "s.425",
+			"s.234F": "s.428(a)",
+			"s.234I": "s.428(b)",
+			"s.288A": "s.516",
+			"s.288B": "s.516",
+			"s.192": "s.392",
+			"Rule 2A": "Rule 279",
+			"Rule 119A": "Rule 269"
+		},
+		"note": "Tax year 2026-27 falls under the Income-tax Act, 2025. The figures here are that Act's, but notes and labels cite the equivalent Income-tax Act 1961 sections (87A, 111A, 112A, 80C, 24(b), 234A to 234F and so on); list_tax_years returns the map to the 2025 Act's numbers. The tax year 2026-27 return forms are not yet notified.",
+		"forms": {
+			"salaryCertificate": "Form No. 130",
+			"claimDeclaration": "Form No. 124 (Rule 205)",
+			"rentDeclaration80GG": "Form No. 31"
+		}
+	},
+	"newRegime": {
+		"slabs": [
+			{ "upTo": 400000, "rate": 0 },
+			{ "upTo": 800000, "rate": 0.05 },
+			{ "upTo": 1200000, "rate": 0.1 },
+			{ "upTo": 1600000, "rate": 0.15 },
+			{ "upTo": 2000000, "rate": 0.2 },
+			{ "upTo": 2400000, "rate": 0.25 },
+			{ "upTo": null, "rate": 0.3 }
+		],
+		"standardDeduction": 75000,
+		"rebate87A": {
+			"incomeThreshold": 1200000,
+			"maxRebate": 60000,
+			"marginalRelief": true,
+			"thresholdBasis": "totalIncome",
+			"allowAgainst111A": false,
+			"allowAgainst112A": false
+		},
+		"employerNps80CCD2": {
+			"pctOfSalary": 0.14
+		},
+		"surchargeCapRate": 0.25
+	},
+	"oldRegime": {
+		"slabs": [
+			{ "upTo": 250000, "rate": 0 },
+			{ "upTo": 500000, "rate": 0.05 },
+			{ "upTo": 1000000, "rate": 0.2 },
+			{ "upTo": null, "rate": 0.3 }
+		],
+		"slabsSenior": [
+			{ "upTo": 300000, "rate": 0 },
+			{ "upTo": 500000, "rate": 0.05 },
+			{ "upTo": 1000000, "rate": 0.2 },
+			{ "upTo": null, "rate": 0.3 }
+		],
+		"slabsSuperSenior": [
+			{ "upTo": 500000, "rate": 0 },
+			{ "upTo": 1000000, "rate": 0.2 },
+			{ "upTo": null, "rate": 0.3 }
+		],
+		"standardDeduction": 50000,
+		"rebate87A": {
+			"incomeThreshold": 500000,
+			"maxRebate": 12500,
+			"marginalRelief": false,
+			"thresholdBasis": "totalIncome",
+			"allowAgainst111A": true,
+			"allowAgainst112A": false
+		},
+		"deductionCaps": {
+			"80C": 150000,
+			"80CCD1B": 50000,
+			"80D_self": 25000,
+			"80D_self_senior": 50000,
+			"80D_parents": 25000,
+			"80D_parents_senior": 50000,
+			"80D_preventiveCheckup": 5000,
+			"80TTA": 10000,
+			"80TTB": 50000,
+			"24b_selfOccupied": 200000,
+			"housePropertyLossSetOff": 200000
+		},
+		"employerNps80CCD2": {
+			"pctOfSalaryPrivate": 0.1,
+			"pctOfSalaryGovernment": 0.14
+		}
+	},
+	"capitalGains": {
+		"stcg111A": 0.2,
+		"ltcg112A": 0.125,
+		"ltcg112AExemption": 125000,
+		"basicExemptionSetOff": {
+			"against111A": true,
+			"against112A": true
+		}
+	},
+	"surcharge": {
+		"slabs": [
+			{ "above": 5000000, "rate": 0.1 },
+			{ "above": 10000000, "rate": 0.15 },
+			{ "above": 20000000, "rate": 0.25 },
+			{ "above": 50000000, "rate": 0.37 }
+		],
+		"capitalGainsAndDividendCap": 0.15,
+		"marginalRelief": true,
+		"enhancedBandsExcludeSpecialRateIncome": true,
+		"enhancedBandRateFloor": 0.25
+	},
+	"cess": 0.04,
+	"advanceTax": {
+		"threshold": 10000,
+		"installments": [
+			{ "dueDate": "06-15", "cumulativePct": 0.15 },
+			{ "dueDate": "09-15", "cumulativePct": 0.45 },
+			{ "dueDate": "12-15", "cumulativePct": 0.75 },
+			{ "dueDate": "03-15", "cumulativePct": 1.0 }
+		],
+		"section234B_paidThresholdPct": 0.9
+	},
+	"deadlines": {
+		"itr1_2": "2027-07-31",
+		"itr3_4_nonAudit": "2027-08-31",
+		"audit": "2027-10-31",
+		"belated": "2027-12-31",
+		"revised": "2028-03-31",
+		"revisedWithoutFee234I": "2027-12-31"
+	},
+	"deadlineCitations": {
+		"itr1_2": "Income-tax Act 2025 s.263(1)(c) Table Sl. No. 4 (Finance Act 2026): 31 July for any other assessee",
+		"itr3_4_nonAudit": "Income-tax Act 2025 s.263(1)(c) Table Sl. No. 3 (Finance Act 2026): 31 August for business or profession income without an audit",
+		"audit": "Income-tax Act 2025 s.263(1)(c) Table Sl. No. 2: 31 October where accounts are audited and s.172 does not apply (30 November where it does, Sl. No. 1)",
+		"belated": "Income-tax Act 2025 s.263(4): 31 December of the financial year after the tax year, or completion of assessment, whichever is earlier",
+		"revised": "Income-tax Act 2025 s.263(5) as substituted by the Finance Act 2026: within twelve months from the end of the tax year, subject to the s.428(b) fee where furnished after nine months"
+	},
+	"lateFee234F": {
+		"default": 5000,
+		"incomeUpTo5L": 1000,
+		"incomeThreshold": 500000
+	},
+	"fee234I": {
+		"default": 5000,
+		"incomeUpTo5L": 1000,
+		"incomeThreshold": 500000
+	},
+	"itrEligibility": {
+		"simpleFormIncomeCap": 5000000,
+		"ltcg112ASimpleFormCap": 125000,
+		"agriIncomeCap": 5000,
+		"maxHouseProperties": 2,
+		"scheduleALIncomeThreshold": 10000000,
+		"presumptive": {
+			"turnoverCap44AD": 20000000,
+			"turnoverCap44ADDigital": 30000000,
+			"receiptsCap44ADA": 5000000,
+			"receiptsCap44ADADigital": 7500000,
+			"maxVehicles44AE": 10,
+			"deemedProfit44AD": 0.08,
+			"deemedProfit44ADDigital": 0.06,
+			"deemedProfit44ADA": 0.5,
+			"deemedProfit44AEHeavyPerTonPerMonth": 1000,
+			"deemedProfit44AEOtherPerVehiclePerMonth": 7500,
+			"cashShareLimit": 0.05,
+			"heavyVehicleAboveGrossWeightTons": 12
+		}
+	},
+	"houseProperty": {
+		"standardDeductionPct": 0.3,
+		"maxSelfOccupied": 2,
+		"selfOccupiedInterestCapOlder": 30000,
+		"preConstructionInstallments": 5
+	},
+	"lossCarryForward": {
+		"housePropertyYears": 8,
+		"businessYears": 8,
+		"speculativeYears": 4,
+		"capitalYears": 8
+	},
+	"tdsCorrectionWindow": {
+		"description": "Deductor correction statements: 2 years from the end of the tax year in which the statement was due (Income-tax Act 2025 s.397(3)(f))"
+	},
+	"rounding": {
+		"income288A": 10,
+		"taxPayable288B": 10,
+		"interestBase119A": 100
+	},
+	"interest": {
+		"ratePerMonth": 0.01,
+		"partMonthIsFullMonth": true,
+		"s234A": {
+			"ratePerMonth": 0.01,
+			"fromDate": "dueDatePlus1"
+		},
+		"s234B": {
+			"trigger": "paidLt90PctAssessed",
+			"fromDate": "AY-04-01"
+		},
+		"s234C": {
+			"installments": [
+				{
+					"due": "2026-06-15",
+					"cumulativePct": 0.15,
+					"safeHarborPct": 0.12,
+					"months": 3
+				},
+				{
+					"due": "2026-09-15",
+					"cumulativePct": 0.45,
+					"safeHarborPct": 0.36,
+					"months": 3
+				},
+				{
+					"due": "2026-12-15",
+					"cumulativePct": 0.75,
+					"safeHarborPct": null,
+					"months": 3
+				},
+				{
+					"due": "2027-03-15",
+					"cumulativePct": 1.0,
+					"safeHarborPct": null,
+					"months": 1
+				}
+			],
+			"presumptive": {
+				"due": "2027-03-15",
+				"pct": 1.0,
+				"months": 1
+			},
+			"minLiability": 10000
+		}
+	},
+	"hra": {
+		"metroCities": [
+			"Mumbai",
+			"Kolkata",
+			"Delhi",
+			"Chennai",
+			"Hyderabad",
+			"Pune",
+			"Ahmedabad",
+			"Bengaluru"
+		],
+		"metroPct": 0.5,
+		"nonMetroPct": 0.4,
+		"rentExcessOfSalaryPct": 0.1,
+		"regimes": ["old"],
+		"warnings": {
+			"landlordPanRentPerYear": 100000,
+			"receiptWaiverHraPerMonth": 3000
+		}
+	},
+	"deduction80GG": {
+		"capPerYear": 60000,
+		"capPerMonth": 5000,
+		"pctOfATI": 0.25,
+		"rentExcessOfATIPct": 0.1,
+		"regimes": ["old"]
+	},
+	"reconcile": {
+		"toleranceRupees": {
+			"pass": 10,
+			"warn": 100,
+			"high": 10000
+		}
+	},
+	"tdsSectionToHead": {
+		"192": "salary",
+		"194A": "otherSources",
+		"194": "dividend",
+		"194I": "houseProperty",
+		"194IA": "capitalGains",
+		"194H": "business",
+		"194J": "business",
+		"194S": "vda"
+	}
+}
